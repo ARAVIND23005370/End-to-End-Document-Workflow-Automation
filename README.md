@@ -1,6 +1,6 @@
-# FlowDoc — AI-Driven Document Workflow & Decision System
+# DocFlow — End-to-End Document Workflow Automation
 
-> Automate document intake, extract intelligence with AI, enforce business rules, and deliver transparent, auditable decisions at scale.
+> Upload any document. Let the system extract, evaluate, decide, and track — automatically, transparently, and at scale.
 
 ---
 
@@ -24,17 +24,21 @@
 
 ## Overview
 
-Organizations process large volumes of documents daily — for verification, compliance, and approvals. Manual handling is slow, inconsistent, error-prone, and lacks transparency.
+Every organization — regardless of size or sector — processes documents that require verification, evaluation, and approval. Doing this manually is slow, inconsistent, and impossible to audit reliably.
 
-**FlowDoc** is a backend-first Spring Boot system that solves this by:
+**DocFlow** is a full-stack document workflow automation system that handles the entire lifecycle of a document — from the moment it is uploaded to the final decision — without manual intervention.
 
-- Automating document intake and processing pipelines
-- Extracting structured information from documents using AI-powered OCR
-- Applying organization-defined rules and policies to every document
-- Executing workflow outcomes — Approve, Review, or Reject — with full audit trails
-- Supporting admin intervention and manual override when required
+### What makes DocFlow different
 
-> **Design principle:** AI is used exclusively for data extraction. All decision logic is rule-based, explainable, and fully configurable by the organization.
+| Traditional Approach | DocFlow |
+|---|---|
+| Manual review of every document | Automated evaluation against configurable rules |
+| Decisions made inconsistently | Every decision follows the same rule logic |
+| No audit trail | Every action logged with timestamp and reason |
+| Fixed approval categories | Configurable rules for any use case |
+| Rejection with no explanation | Every rejection includes the exact reason |
+
+> **Core principle:** AI handles data extraction only. All decisions are rule-based, explainable, and fully auditable.
 
 ---
 
@@ -42,12 +46,18 @@ Organizations process large volumes of documents daily — for verification, com
 
 ```
 Document Upload
-    └─→ OCR Text Extraction  (AI)
-            └─→ Rule & Policy Evaluation
-                    └─→ System Decision
-                         ├─→ APPROVE  ──→ Audit Log
-                         ├─→ REJECT   ──→ Audit Log + Reason Stored
-                         └─→ REVIEW   ──→ Admin Queue → Manual Decision → Audit Log
+    │
+    ▼
+OCR Text Extraction  ──────────────────────  AI extracts text + confidence score
+    │
+    ▼
+Rule & Policy Evaluation  ─────────────────  Rules evaluated in priority order (P1 → P2 → P3)
+    │
+    ├──▶  APPROVED  ───────────────────────  All rules passed → stored + logged
+    │
+    ├──▶  REJECTED  ───────────────────────  Rule failed → reason stored + logged
+    │
+    └──▶  REVIEW    ───────────────────────  Flagged → Admin queue → Manual decision → logged
 ```
 
 ---
@@ -55,98 +65,181 @@ Document Upload
 ## Features
 
 ### User Management
-- User registration and authentication
-- Role-based access control — `ADMIN`, `STAFF`, and `VIEWER` roles
-- JWT-secured REST API endpoints
+- User registration and authentication with JWT
+- Role-based access control — `ADMIN`, `STAFF`, `VIEWER`
+- Secure, stateless REST API
 
 ### Document Management
-- Upload documents in any format
-- Store and track document metadata
-- Monitor processing status at each pipeline stage
+- Upload documents in any format — PDF, DOCX, PNG, JPG
+- Store and track document metadata and status
+- Priority tagging — High, Medium, Low
+- Department assignment and folder routing
 
 ### AI OCR Extraction
-- Extract raw text from uploaded documents
-- Generate confidence scores for extraction quality
-- Pluggable external OCR service integration
+- Extract raw text and structure from uploaded documents
+- Generate confidence scores per document
+- Ready for integration with any external OCR service
 
 ### Rule Engine
-- Define custom rules and thresholds per organization
-- Priority-ordered rule execution (P1 evaluated before P2, P3)
-- Threshold-based decision logic — documents below threshold are rejected
-- Every rejection stores the exact rule that failed and why
+- Define unlimited custom rules per organization
+- Set confidence thresholds — documents below threshold are rejected
+- Priority-ordered execution — P1 rules evaluated before P2, P3
+- Enable or disable individual rules without deleting them
+- Every rejection records the exact rule that failed
+
+### Document Forwarding
+- Forward any document to any department or person
+- Free-text destination — no fixed department list
+- Full forward history tracked per document
 
 ### Admin Review
-- Manual review queue for flagged documents
-- Admin can approve, reject, or escalate with comments
-- Review decisions are stored and linked to the audit trail
+- Manual review queue for documents flagged for REVIEW
+- Admin can approve, reject, or escalate with written comments
+- Admin decisions override system decisions
+- All overrides stored in audit trail
 
 ### Audit Logging
-- Every system and admin action is timestamped and logged
-- Full decision history per document
-- Compliance-ready audit trail
+- Every action logged — upload, decision, forward, email, role change
+- Timestamped and attributed to the user who performed it
+- Filter audit log by document or view full system history
+- Compliance-ready — nothing is ever deleted
+
+### Email Notifications
+- Automatic email sent to uploader when document is rejected
+- User can opt in or out of notifications
+- Configurable via Gmail or any SMTP provider
 
 ---
 
 ## System Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                  API Consumers / Clients                  │
-└────────────────────────┬─────────────────────────────────┘
-                         │  HTTP / REST
-┌────────────────────────▼─────────────────────────────────┐
-│              Spring Boot REST API Layer                   │
-│          (Controllers · Services · Security)             │
-└──────┬───────────────┬──────────────────┬────────────────┘
-       │               │                  │
-┌──────▼──────┐  ┌─────▼──────┐  ┌───────▼────────┐
-│ Rule Engine │  │ OCR Service│  │  Audit Service │
-│  & Workflow │  │ (External) │  │                │
-└──────┬──────┘  └─────┬──────┘  └───────┬────────┘
-       │               │                  │
-┌──────▼───────────────▼──────────────────▼──────┐
-│              Relational Database                 │
-│          (H2 · MySQL · PostgreSQL)               │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                    Client  (React Frontend)                   │
+│              localhost:5173  /  Production URL               │
+└───────────────────────────────┬──────────────────────────────┘
+                                │  HTTP REST + JWT
+┌───────────────────────────────▼──────────────────────────────┐
+│                  Spring Boot API Layer                        │
+│            Controllers  ·  Services  ·  Security             │
+└────────┬──────────────────┬──────────────────┬───────────────┘
+         │                  │                  │
+┌────────▼────────┐ ┌───────▼───────┐ ┌────────▼────────┐
+│   Rule Engine   │ │  OCR Service  │ │  Audit Service  │
+│  Priority-based │ │  (External)   │ │  Action Logger  │
+│  decision logic │ │  AI Powered   │ │                 │
+└────────┬────────┘ └───────┬───────┘ └────────┬────────┘
+         │                  │                  │
+┌────────▼──────────────────▼──────────────────▼────────┐
+│                   Relational Database                   │
+│              H2  (Dev)  ·  MySQL / PostgreSQL  (Prod)  │
+└────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Technology Stack
 
-| Layer | Technology |
+### Backend
+| Component | Technology |
 |---|---|
-| Language | Java 17+ |
-| Framework | Spring Boot 3.x |
+| Language | Java 17 |
+| Framework | Spring Boot 3.2.3 |
 | Persistence | Spring Data JPA |
-| Security | Spring Security + JWT |
-| API Style | RESTful HTTP |
-| Database — Development | H2 (file-based) |
-| Database — Production | MySQL / PostgreSQL |
-| AI Integration | External OCR Service |
-| Build Tool | Maven |
+| Security | Spring Security + JWT (JJWT 0.11.5) |
+| OCR | Apache PDFBox 2.0.30 + Tess4J 5.11.0 |
+| Build | Maven |
+
+### Frontend
+| Component | Technology |
+|---|---|
+| Framework | React 18 + Vite |
+| Styling | Inline CSS with CSS variables |
+| Font | Plus Jakarta Sans + JetBrains Mono |
+| HTTP | Fetch API |
+
+### Database
+| Environment | Database |
+|---|---|
+| Development | H2 (file-based, auto-schema) |
+| Production | MySQL / PostgreSQL |
+
+### Tools
+| Purpose | Tool |
+|---|---|
 | API Testing | Postman |
+| Version Control | Git + GitHub |
 | IDE | IntelliJ IDEA |
+| Package Manager | npm (frontend) |
 
 ---
 
 ## Project Structure
 
 ```
-flowdoc/
+docflow/
 ├── src/
 │   └── main/
 │       ├── java/com/project/documentworkflow/
-│       │   ├── config/              # Security, CORS, app configuration
-│       │   ├── controller/          # REST API endpoints
-│       │   ├── service/             # Business logic layer
-│       │   ├── repository/          # JPA data access layer
-│       │   ├── model/               # JPA entity definitions
-│       │   ├── dto/                 # Request / response objects
-│       │   ├── exception/           # Global exception handling
-│       │   └── security/            # JWT filter, security config
+│       │   ├── config/
+│       │   │   └── CorsConfig.java
+│       │   ├── controller/
+│       │   │   ├── AuthController.java
+│       │   │   ├── AuditController.java
+│       │   │   ├── DecisionController.java
+│       │   │   ├── DocumentController.java
+│       │   │   ├── DocumentForwardController.java
+│       │   │   ├── FileUploadController.java
+│       │   │   ├── RuleController.java
+│       │   │   └── UserController.java
+│       │   ├── dto/
+│       │   │   ├── ApiResponse.java
+│       │   │   ├── DecisionHistoryResponse.java
+│       │   │   ├── DecisionRequest.java
+│       │   │   ├── EmailPreferenceRequest.java
+│       │   │   ├── ForwardRequest.java
+│       │   │   ├── LoginRequest.java
+│       │   │   ├── RegisterRequest.java
+│       │   │   └── UploadResponse.java
+│       │   ├── exception/
+│       │   │   ├── DocumentNotFoundException.java
+│       │   │   └── GlobalExceptionHandler.java
+│       │   ├── model/
+│       │   │   ├── AuditLog.java
+│       │   │   ├── Decision.java
+│       │   │   ├── Document.java
+│       │   │   ├── DocumentForward.java
+│       │   │   ├── OCRData.java
+│       │   │   ├── Rule.java
+│       │   │   └── User.java
+│       │   ├── repository/
+│       │   │   ├── AuditLogRepository.java
+│       │   │   ├── DecisionRepository.java
+│       │   │   ├── DocumentForwardRepository.java
+│       │   │   ├── DocumentRepository.java
+│       │   │   ├── OCRDataRepository.java
+│       │   │   ├── RuleRepository.java
+│       │   │   └── UserRepository.java
+│       │   ├── security/
+│       │   │   ├── JwtFilter.java
+│       │   │   ├── JwtUtil.java
+│       │   │   └── SecurityConfig.java
+│       │   └── service/
+│       │       ├── AuditService.java
+│       │       ├── DecisionEngineService.java
+│       │       ├── DecisionService.java
+│       │       ├── DocumentForwardService.java
+│       │       ├── DocumentService.java
+│       │       ├── DocumentWorkflowService.java
+│       │       ├── EmailNotificationService.java
+│       │       ├── JwtService.java
+│       │       ├── RuleService.java
+│       │       └── UserService.java
 │       └── resources/
 │           └── application.properties
+├── docflow-frontend/
+│   └── src/
+│       └── DocflowApp.jsx
 ├── docs/
 │   ├── ER_Diagram.png
 │   └── Architecture.png
@@ -158,124 +251,122 @@ flowdoc/
 
 ## Database Design
 
-The system uses a normalized relational schema with the following core entities:
+```
+User ────────────────── uploads ──────────────── Document
+ │                                                   │
+ │                                              ┌────┴─────┐
+ │                                           OCRData    Decision
+ │                                                          │
+ └──── AuditLog ◄──── all actions             Rule ────────┘
+                                           (evaluated against)
+                      DocumentForward ◄── Document
+```
 
-| Entity | Description |
+| Entity | Key Fields |
 |---|---|
-| `User` | Registered users with assigned roles |
-| `Document` | Uploaded documents and metadata |
-| `OCRData` | Extracted text and confidence scores per document |
-| `Rule` | Organization-defined evaluation rules with priority and threshold |
-| `Decision` | System-generated or admin-override decisions |
-| `DocumentForward` | Records of documents forwarded to departments |
-| `AuditLog` | Timestamped log of every system and admin action |
-
-> See `docs/ER_Diagram.png` for the full entity-relationship diagram.
+| `User` | id, name, email, password, role, emailNotifyOnReject |
+| `Document` | documentId, fileName, status, priority, department, folderPath, uploadedByEmail |
+| `OCRData` | id, extractedText, confidenceScore, document |
+| `Rule` | ruleId, ruleName, conditionDescription, thresholdValue, priority, active |
+| `Decision` | decisionId, decisionType, decisionSource, decisionReason, decisionTime |
+| `DocumentForward` | id, documentId, forwardedTo, forwardedBy, forwardType, note, forwardedAt |
+| `AuditLog` | id, action, documentId, performedBy, details, actionTime |
 
 ---
 
 ## API Reference
 
-### Authentication
+### Authentication — Public
 
-| Method | Endpoint | Description | Access |
-|---|---|---|---|
-| `POST` | `/api/auth/register` | Register a new user | Public |
-| `POST` | `/api/auth/login` | Authenticate and receive JWT token | Public |
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Register a new user |
+| `POST` | `/api/auth/login` | Login and receive JWT token |
 
 ### Documents
 
-| Method | Endpoint | Description | Access |
+| Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `POST` | `/api/upload` | Upload a document for processing | ADMIN, STAFF |
-| `GET` | `/api/documents/{id}` | Retrieve document details | Authenticated |
+| `POST` | `/api/upload` | ADMIN, STAFF | Upload and process a document |
+| `GET` | `/api/documents/{id}` | Any | Get document details |
 
 ### Rules
 
-| Method | Endpoint | Description | Access |
+| Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `GET` | `/api/rules` | List all rules | Authenticated |
-| `POST` | `/api/rules` | Create a new rule | ADMIN, STAFF |
-| `DELETE` | `/api/rules/{id}` | Delete a rule | ADMIN, STAFF |
-| `PUT` | `/api/rules/{id}/toggle` | Enable or disable a rule | ADMIN, STAFF |
+| `GET` | `/api/rules` | Any | List all rules |
+| `POST` | `/api/rules` | ADMIN, STAFF | Create a new rule |
+| `DELETE` | `/api/rules/{id}` | ADMIN, STAFF | Delete a rule |
+| `PUT` | `/api/rules/{id}/toggle` | ADMIN, STAFF | Enable or disable a rule |
 
 ### Decisions
 
-| Method | Endpoint | Description | Access |
+| Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `GET` | `/api/decisions` | List all decisions | Authenticated |
-| `GET` | `/api/decisions/{id}` | Get a specific decision with rejection reason | Authenticated |
-| `POST` | `/api/decisions/evaluate` | Evaluate a document against all active rules | Authenticated |
+| `GET` | `/api/decisions` | Any | List all decisions |
+| `GET` | `/api/decisions/{id}` | Any | Get decision with rejection reason |
 
 ### Document Forwarding
 
-| Method | Endpoint | Description | Access |
+| Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `POST` | `/api/forward` | Forward a document to any department | ADMIN, STAFF |
-| `GET` | `/api/forward/{docId}` | Get forward history for a document | Authenticated |
-| `GET` | `/api/forward` | List all forward records | Authenticated |
+| `POST` | `/api/forward` | ADMIN, STAFF | Forward document to any destination |
+| `GET` | `/api/forward/{docId}` | Any | Get forward history for a document |
+| `GET` | `/api/forward` | Any | List all forward records |
 
 ### Audit
 
-| Method | Endpoint | Description | Access |
+| Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `GET` | `/api/audit` | Get full system audit log | ADMIN, STAFF |
-| `GET` | `/api/audit/{docId}` | Get audit trail for a specific document | Authenticated |
+| `GET` | `/api/audit` | ADMIN, STAFF | Full system audit log |
+| `GET` | `/api/audit/{docId}` | Any | Audit trail for a specific document |
 
 ### Users
 
-| Method | Endpoint | Description | Access |
+| Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `GET` | `/api/users` | List all users | ADMIN |
-| `GET` | `/api/users/me` | Get current user profile | Authenticated |
-| `PUT` | `/api/users/{id}/role` | Update a user's role | ADMIN |
-| `PUT` | `/api/users/email-preference` | Update email notification preference | Authenticated |
+| `GET` | `/api/users` | ADMIN | List all users |
+| `GET` | `/api/users/me` | Any | Get current user profile |
+| `PUT` | `/api/users/{id}/role` | ADMIN | Update a user's role |
+| `PUT` | `/api/users/email-preference` | Any | Toggle email notifications |
 
 ---
 
-### Example — Evaluate Document
+### Example — Upload and Get Decision
 
+**Upload:**
 ```http
-POST /api/decisions/evaluate
-Authorization: Bearer <your-jwt-token>
-Content-Type: application/json
+POST /api/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
 
-{
-  "documentId": 1,
-  "ocrDataId": 1
-}
+file: <your-document>
 ```
 
-**Response — Approved:**
-
+**Decision Response — Approved:**
 ```json
 {
   "success": true,
   "data": {
-    "decisionId": 12,
-    "documentId": 1,
-    "decisionType": "APPROVED",
-    "decisionSource": "RULE_ENGINE",
-    "decisionTime": "2025-03-09T10:30:00"
-  },
-  "error": null
+    "documentId": 5,
+    "decision": "APPROVED",
+    "status": "COMPLETED",
+    "folderPath": "uploads/approved"
+  }
 }
 ```
 
-**Response — Rejected:**
-
+**Decision Response — Rejected:**
 ```json
 {
   "success": true,
   "data": {
-    "decisionId": 13,
-    "documentId": 2,
-    "decisionType": "REJECTED",
+    "documentId": 6,
+    "decision": "REJECTED",
     "decisionSource": "FAILED_RULE: Minimum Quality Check",
-    "decisionReason": "OCR confidence score 62% is below the required threshold of 80%",
-    "decisionTime": "2025-03-09T10:31:00"
-  },
-  "error": null
+    "decisionReason": "OCR confidence 58% is below required threshold of 80%",
+    "status": "COMPLETED"
+  }
 }
 ```
 
@@ -284,24 +375,28 @@ Content-Type: application/json
 ## Decision Logic
 
 ```
-Active rules are loaded and sorted by priority (P1 first, then P2, P3...)
+On document upload:
 
-For each rule:
-  └─→ If document OCR confidence < rule threshold
-          └─→ REJECTED
-               Reason stored: "Failed rule: <name> — score <x>% below threshold <y>%"
-               Processing stops. No further rules evaluated.
+  1. OCR service extracts text → confidence score generated
 
-If all rules pass:
-  └─→ APPROVED
+  2. Active rules loaded and sorted by priority (P1 first)
 
-If flagged for manual review:
-  └─→ REVIEW → enters Admin queue
-       Admin approves or rejects with comment
-       Final decision replaces system decision
-       Audit log updated
+  3. For each rule:
+       IF confidence score < rule threshold
+           → REJECTED
+              Reason: "Failed rule: <name> — score <x>% below <threshold>%"
+              Stop. No further rules evaluated.
 
-All outcomes — APPROVED, REJECTED, REVIEW — are stored with full context.
+  4. If all rules pass:
+       → APPROVED
+
+  5. If flagged for human review:
+       → REVIEW
+          Enters admin queue
+          Admin approves or rejects with comment
+          Audit log updated with final decision
+
+  6. All outcomes stored with full context in AuditLog
 ```
 
 ---
@@ -312,49 +407,49 @@ All outcomes — APPROVED, REJECTED, REVIEW — are stored with full context.
 
 - Java 17+
 - Maven 3.6+
+- Node.js 18+ (for frontend)
 - IntelliJ IDEA (recommended)
 
-### Run Locally
+### Run Backend
 
-```bash
-# Clone the repository
-git clone https://github.com/your-username/flowdoc.git
-cd flowdoc
-
-# Build and run
+```powershell
+cd path/to/docflow
 mvn spring-boot:run
 ```
 
-API base URL: `http://localhost:8080`  
-H2 Console (dev only): `http://localhost:8080/h2-console`
+API available at: `http://localhost:8080`
+H2 Console (dev): `http://localhost:8080/h2-console`
+
+### Run Frontend
+
+```powershell
+cd docflow-frontend
+npm install
+npm run dev
+```
+
+Frontend available at: `http://localhost:5173`
 
 ### Configuration
 
 `src/main/resources/application.properties`:
 
 ```properties
-# Server
 server.port=8080
 
-# Database — H2 (development)
-spring.datasource.url=jdbc:h2:file:./flowdoc_db
+spring.datasource.url=jdbc:h2:file:./documentworkflow_db
 spring.datasource.driver-class-name=org.h2.Driver
 spring.datasource.username=sa
 spring.datasource.password=
 
-# JPA
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
 
-# H2 Console
 spring.h2.console.enabled=true
 spring.h2.console.path=/h2-console
 
-# JWT
 jwt.secret=YourSecureSecretKeyHere
 ```
-
-> For production: switch to MySQL or PostgreSQL, disable H2 console, and use environment variables for secrets.
 
 ---
 
@@ -364,28 +459,30 @@ jwt.secret=YourSecureSecretKeyHere
 |---|---|
 | Project setup & configuration | ✅ Complete |
 | Entity & database design | ✅ Complete |
-| Repository layer | ✅ Complete |
-| REST API controllers | ✅ Complete |
 | JWT authentication & security | ✅ Complete |
 | Role-based access control | ✅ Complete |
-| Rule engine with priority ordering | ✅ Complete |
+| Document upload & management | ✅ Complete |
 | OCR integration | ✅ Complete |
+| Rule engine with priority ordering | ✅ Complete |
+| System decision engine | ✅ Complete |
 | Document forwarding | ✅ Complete |
 | Email notifications on reject | ✅ Complete |
 | Audit logging | ✅ Complete |
-| Admin review module | 🔄 In Progress |
 | React frontend | ✅ Complete |
+| Admin review module | 🔄 In Progress |
+| Production database migration | 🔄 In Progress |
 
 ---
 
 ## Future Enhancements
 
-- **Policy versioning** — track rule changes over time with full rollback support
-- **Decision analytics** — visual dashboard for approval rates, rejection trends, and processing times
-- **Rule optimization** — AI-assisted threshold suggestions based on historical decisions
-- **Multi-tenant support** — isolated rule sets and document namespaces per organization
-- **Webhook integration** — push decision results to external systems in real time
-- **Export reports** — downloadable audit and decision history in Excel or PDF format
+- **Policy versioning** — track and rollback rule changes over time
+- **Decision analytics dashboard** — approval rates, rejection trends, processing time metrics
+- **Rule optimization engine** — AI-assisted threshold tuning based on historical data
+- **Multi-tenant support** — isolated workspaces per organization
+- **Webhook integration** — push decisions to external systems in real time
+- **Export reports** — audit logs and decision history as Excel or PDF
+- **Mobile application** — document upload and status tracking on mobile
 
 ---
 
@@ -396,5 +493,6 @@ This project is developed for academic and learning purposes.
 ---
 
 <div align="center">
-  <sub>FlowDoc · Built with Spring Boot · Rule-based decisions that are explainable by design</sub>
+  <strong>DocFlow</strong> · End-to-End Document Workflow Automation<br/>
+  <sub>Built with Spring Boot + React · Decisions that are transparent, explainable, and auditable by design</sub>
 </div>
