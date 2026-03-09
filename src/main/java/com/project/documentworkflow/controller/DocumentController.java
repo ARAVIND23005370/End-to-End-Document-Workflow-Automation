@@ -5,6 +5,8 @@ import org.springframework.web.bind.annotation.*;
 import com.project.documentworkflow.model.Document;
 import com.project.documentworkflow.service.DocumentService;
 
+import java.util.Optional;
+
 @RestController
 @RequestMapping("/api/documents")
 public class DocumentController {
@@ -15,5 +17,10 @@ public class DocumentController {
     @PostMapping
     public Document createDocument(@RequestBody Document document) {
         return documentService.saveDocument(document);
+    }
+
+    @GetMapping("/{id}")
+    public Document getDocumentById(@PathVariable Long id) {
+        return documentService.getDocumentById(id);
     }
 }

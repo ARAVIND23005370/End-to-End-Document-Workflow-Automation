@@ -1,25 +1,29 @@
 package com.project.documentworkflow.controller;
 
-import com.project.documentworkflow.dto.DecisionRequest;
+import com.project.documentworkflow.dto.ApiResponse;
 import com.project.documentworkflow.model.Decision;
-import com.project.documentworkflow.service.DecisionEngineService;
+import com.project.documentworkflow.repository.DecisionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/decisions")
 public class DecisionController {
 
-    private final DecisionEngineService decisionEngineService;
+    @Autowired
+    private DecisionRepository decisionRepository;
 
-    public DecisionController(DecisionEngineService decisionEngineService) {
-        this.decisionEngineService = decisionEngineService;
+    @GetMapping
+    public ApiResponse<List<Decision>> getAllDecisions() {
+        return new ApiResponse<>(true, decisionRepository.findAll(), null);
     }
 
-    @PostMapping("/evaluate")
-    public Decision evaluateDecision(@RequestBody DecisionRequest request) {
-        return decisionEngineService.evaluateDecision(
-                request.getDocumentId(),
-                request.getOcrDataId()
-        );
+    @GetMapping("/{id}")
+    public ApiResponse<Decision> getDecisionById(@PathVariable Long id) {
+        Decision decision = decisionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Decision not found"));
+        return new ApiResponse<>(true, decision, null);
     }
 }

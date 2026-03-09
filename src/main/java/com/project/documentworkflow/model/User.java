@@ -11,38 +11,35 @@ public class User {
     private Long userId;
 
     private String name;
+
+    @Column(unique = true)
     private String email;
+
+    private String password;
+
+    // ADMIN, STAFF, VIEWER
     private String role;
 
-    public Long getUserId() {
-        return userId;
-    }
+    // User permission: do they allow auto-email on reject?
+    private Boolean emailNotifyOnReject = false;
 
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
+    // Getters and Setters
+    public Long getUserId() { return userId; }
 
-    public String getName() {
-        return name;
-    }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
 
-    public String getEmail() {
-        return email;
-    }
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
 
-    public String getRole() {
-        return role;
-    }
-
-    public void setRole(String role) {
-        this.role = role;
+    public Boolean getEmailNotifyOnReject() { return emailNotifyOnReject; }
+    public void setEmailNotifyOnReject(Boolean emailNotifyOnReject) {
+        this.emailNotifyOnReject = emailNotifyOnReject;
     }
 }

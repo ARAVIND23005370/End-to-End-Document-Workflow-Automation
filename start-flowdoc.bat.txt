@@ -1,0 +1,29 @@
+@echo off
+title FlowDoc Launcher
+color 1F
+
+echo.
+echo  ========================================
+echo   FlowDoc — Starting All Services...
+echo  ========================================
+echo.
+
+:: ── Start Spring Boot Backend ──
+echo  [1/2] Starting Spring Boot backend on port 8080...
+start "FlowDoc Backend" cmd /k "cd /d C:\Users\admin\Desktop\PROJECT\documentworkflow\documentworkflow\documentworkflow && C:\Users\admin\Downloads\apache-maven-3.9.12-bin\apache-maven-3.9.12\bin\mvn.cmd spring-boot:run"
+
+:: Wait 5 seconds before starting frontend
+timeout /t 5 /nobreak > nul
+
+:: ── Start React Frontend ──
+echo  [2/2] Starting React frontend on port 5173...
+start "FlowDoc Frontend" cmd /k "cd /d C:\Users\admin\Desktop\PROJECT\documentworkflow\documentworkflow\documentworkflow\docflow-frontend && npm run dev"
+
+echo.
+echo  ========================================
+echo   Both services are starting!
+echo   Backend  →  http://localhost:8080
+echo   Frontend →  http://localhost:5173
+echo  ========================================
+echo.
+pause
