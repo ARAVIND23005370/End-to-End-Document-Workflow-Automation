@@ -5,7 +5,6 @@
 ---
 
 ## Table of Contents
-
 - [Overview](#overview)
 - [How It Works](#how-it-works)
 - [Features](#features)
@@ -13,6 +12,8 @@
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
 - [Database Design](#database-design)
+- [Supported Document Types](#supported-document-types)
+- [Rule Engine](#rule-engine)
 - [API Reference](#api-reference)
 - [Decision Logic](#decision-logic)
 - [Getting Started](#getting-started)
@@ -35,8 +36,10 @@ Every organization — regardless of size or sector — processes documents that
 | Manual review of every document | Automated evaluation against configurable rules |
 | Decisions made inconsistently | Every decision follows the same rule logic |
 | No audit trail | Every action logged with timestamp and reason |
-| Fixed approval categories | Configurable rules for any use case |
+| Fixed approval categories | Configurable rules per document type |
 | Rejection with no explanation | Every rejection includes the exact reason |
+| One rule applies to all documents | Different rules per document type (Medical, Legal, HR...) |
+| Keywords hardcoded in code | Admin defines required keywords in Rule Setup UI |
 
 > **Core principle:** AI handles data extraction only. All decisions are rule-based, explainable, and fully auditable.
 
@@ -45,19 +48,23 @@ Every organization — regardless of size or sector — processes documents that
 ## How It Works
 
 ```
-Document Upload
+Document Upload (PDF / DOCX / TXT)
     │
     ▼
-OCR Text Extraction  ──────────────────────  AI extracts text + confidence score
+Document Type Detection  ──────────────  Auto-detects: LOAN, MEDICAL, STUDENT, HR, LEGAL...
     │
     ▼
-Rule & Policy Evaluation  ─────────────────  Rules evaluated in priority order (P1 → P2 → P3)
+OCR Text Extraction  ──────────────────  Extracts text + calculates confidence score
+    │                                    (PDFBox for PDF, plain text for TXT/DOCX)
+    ▼
+Rule & Keyword Evaluation  ────────────  Rules filtered by document type → evaluated in priority order
+    │                                    Confidence threshold check → Keyword presence check
     │
-    ├──▶  APPROVED  ───────────────────────  All rules passed → stored + logged
+    ├──▶  APPROVED  ───────────────────  All rules passed + all keywords found → logged
     │
-    ├──▶  REJECTED  ───────────────────────  Rule failed → reason stored + logged
+    ├──▶  REJECTED  ───────────────────  Rule failed or keyword missing → reason stored + logged
     │
-    └──▶  REVIEW    ───────────────────────  Flagged → Admin queue → Manual decision → logged
+    └──▶  REVIEW    ───────────────────  Borderline score (30–70%) → Admin queue → Manual decision
 ```
 
 ---
@@ -70,22 +77,28 @@ Rule & Policy Evaluation  ─────────────────  R
 - Secure, stateless REST API
 
 ### Document Management
-- Upload documents in any format — PDF, DOCX, PNG, JPG
+- Upload documents — **PDF, DOCX, TXT**
+- **Apache PDFBox** integration — reads actual text from PDF files
+- Auto-detect document type from content and filename
 - Store and track document metadata and status
 - Priority tagging — High, Medium, Low
 - Department assignment and folder routing
 
 ### AI OCR Extraction
-- Extract raw text and structure from uploaded documents
-- Generate confidence scores per document
+- Extract raw text from uploaded documents
+- **Smart confidence scoring** — calculated from 10 document-specific checks
+- **Different scoring logic per document type** — Medical, Student, HR, Legal each have their own criteria
 - Ready for integration with any external OCR service
 
-### Rule Engine
+### Rule Engine ⭐ New
 - Define unlimited custom rules per organization
+- **Document Type selector** — each rule applies to one specific document type OR all types
+- **Required Keywords box** — admin enters comma-separated keywords; ALL must be present to pass
+- Live keyword preview — tags appear as you type
 - Set confidence thresholds — documents below threshold are rejected
 - Priority-ordered execution — P1 rules evaluated before P2, P3
 - Enable or disable individual rules without deleting them
-- Every rejection records the exact rule that failed
+- Every rejection records the exact rule and keyword that failed
 
 ### Document Forwarding
 - Forward any document to any department or person
@@ -93,13 +106,13 @@ Rule & Policy Evaluation  ─────────────────  R
 - Full forward history tracked per document
 
 ### Admin Review
-- Manual review queue for documents flagged for REVIEW
+- Manual review queue for borderline documents (30–70% confidence)
 - Admin can approve, reject, or escalate with written comments
-- Admin decisions override system decisions
 - All overrides stored in audit trail
 
 ### Audit Logging
 - Every action logged — upload, decision, forward, email, role change
+- Shows file name, document type, and confidence % on upload
 - Timestamped and attributed to the user who performed it
 - Filter audit log by document or view full system history
 - Compliance-ready — nothing is ever deleted
@@ -126,8 +139,8 @@ Rule & Policy Evaluation  ─────────────────  R
          │                  │                  │
 ┌────────▼────────┐ ┌───────▼───────┐ ┌────────▼────────┐
 │   Rule Engine   │ │  OCR Service  │ │  Audit Service  │
-│  Priority-based │ │  (External)   │ │  Action Logger  │
-│  decision logic │ │  AI Powered   │ │                 │
+│  Type-filtered  │ │  PDFBox +     │ │  Action Logger  │
+│  Keyword check  │ │  Smart Score  │ │                 │
 └────────┬────────┘ └───────┬───────┘ └────────┬────────┘
          │                  │                  │
 ┌────────▼──────────────────▼──────────────────▼────────┐
@@ -147,7 +160,8 @@ Rule & Policy Evaluation  ─────────────────  R
 | Framework | Spring Boot 3.2.3 |
 | Persistence | Spring Data JPA |
 | Security | Spring Security + JWT (JJWT 0.11.5) |
-| OCR | Apache PDFBox 2.0.30 + Tess4J 5.11.0 |
+| PDF Reading | Apache PDFBox 2.0.30 |
+| OCR | Tess4J 5.11.0 |
 | Build | Maven |
 
 ### Frontend
@@ -192,57 +206,23 @@ docflow/
 │       │   │   ├── FileUploadController.java
 │       │   │   ├── RuleController.java
 │       │   │   └── UserController.java
-│       │   ├── dto/
-│       │   │   ├── ApiResponse.java
-│       │   │   ├── DecisionHistoryResponse.java
-│       │   │   ├── DecisionRequest.java
-│       │   │   ├── EmailPreferenceRequest.java
-│       │   │   ├── ForwardRequest.java
-│       │   │   ├── LoginRequest.java
-│       │   │   ├── RegisterRequest.java
-│       │   │   └── UploadResponse.java
-│       │   ├── exception/
-│       │   │   ├── DocumentNotFoundException.java
-│       │   │   └── GlobalExceptionHandler.java
 │       │   ├── model/
 │       │   │   ├── AuditLog.java
 │       │   │   ├── Decision.java
 │       │   │   ├── Document.java
 │       │   │   ├── DocumentForward.java
 │       │   │   ├── OCRData.java
-│       │   │   ├── Rule.java
+│       │   │   ├── Rule.java          ← requiredKeywords + documentType fields added
 │       │   │   └── User.java
-│       │   ├── repository/
-│       │   │   ├── AuditLogRepository.java
-│       │   │   ├── DecisionRepository.java
-│       │   │   ├── DocumentForwardRepository.java
-│       │   │   ├── DocumentRepository.java
-│       │   │   ├── OCRDataRepository.java
-│       │   │   ├── RuleRepository.java
-│       │   │   └── UserRepository.java
-│       │   ├── security/
-│       │   │   ├── JwtFilter.java
-│       │   │   ├── JwtUtil.java
-│       │   │   └── SecurityConfig.java
-│       │   └── service/
-│       │       ├── AuditService.java
-│       │       ├── DecisionEngineService.java
-│       │       ├── DecisionService.java
-│       │       ├── DocumentForwardService.java
-│       │       ├── DocumentService.java
-│       │       ├── DocumentWorkflowService.java
-│       │       ├── EmailNotificationService.java
-│       │       ├── JwtService.java
-│       │       ├── RuleService.java
-│       │       └── UserService.java
-│       └── resources/
-│           └── application.properties
+│       │   ├── service/
+│       │   │   ├── DecisionEngineService.java   ← keyword check + type filtering
+│       │   │   ├── DocumentWorkflowService.java ← PDFBox + smart confidence scoring
+│       │   │   └── ...
+│       │   └── resources/
+│       │       └── application.properties
 ├── docflow-frontend/
 │   └── src/
-│       └── DocflowApp.jsx
-├── docs/
-│   ├── ER_Diagram.png
-│   └── Architecture.png
+│       └── DocflowApp.jsx    ← keyword box + document type selector in Rule Setup
 ├── pom.xml
 └── README.md
 ```
@@ -265,49 +245,100 @@ User ────────────────── uploads ────
 | Entity | Key Fields |
 |---|---|
 | `User` | id, name, email, password, role, emailNotifyOnReject |
-| `Document` | documentId, fileName, status, priority, department, folderPath, uploadedByEmail |
+| `Document` | documentId, fileName, documentType, status, priority, folderPath, uploadedByEmail |
 | `OCRData` | id, extractedText, confidenceScore, document |
-| `Rule` | ruleId, ruleName, conditionDescription, thresholdValue, priority, active |
+| `Rule` | ruleId, ruleName, conditionDescription, thresholdValue, priority, active, **documentType**, **requiredKeywords** |
 | `Decision` | decisionId, decisionType, decisionSource, decisionReason, decisionTime |
 | `DocumentForward` | id, documentId, forwardedTo, forwardedBy, forwardType, note, forwardedAt |
 | `AuditLog` | id, action, documentId, performedBy, details, actionTime |
 
 ---
 
+## Supported Document Types
+
+DocFlow automatically detects the document type from content and filename, then applies type-specific rules and confidence scoring.
+
+| Type | Auto-detected From | Confidence Checks Include |
+|---|---|---|
+| `LOAN` | loan, pan, aadhaar, income | name, PAN, income, amount, signature |
+| `COMPLAINT` | complaint, grievance | name, date, issue, reference, signature |
+| `INVOICE` | invoice, gst, bill to | invoice no, GST, amount, vendor, items |
+| `MEDICAL` | patient, doctor, hospital, diagnosis | patient, doctor, diagnosis, medicine, test |
+| `STUDENT` | student, college, cgpa, marks | register no, college, course, marks, HOD |
+| `HR` | employee, designation, salary, ctc | designation, department, salary, joining, PAN |
+| `LEGAL` | court, advocate, petition, plaintiff | court, case, advocate, clause, witness |
+| `CONTRACT` | contract, agreement, parties | parties, terms, payment, duration, witness |
+| `IDENTITY` | aadhaar, passport, pan | name, DOB, address, gender, issued |
+| `FINANCIAL` | financial, balance sheet | — |
+| `GENERAL` | everything else | name, date, address, signature |
+
+---
+
+## Rule Engine
+
+### How rules work
+
+Each rule has:
+- **Rule Name** — descriptive label
+- **Threshold** — documents below this confidence % fail this rule
+- **Priority** — rules are checked in order (1 = first)
+- **Document Type** — rule only applies to this type (`ALL` applies to everything)
+- **Required Keywords** — ALL listed keywords must be present in the document text
+
+### Evaluation order
+
+```
+1. Load all active rules
+2. Filter rules matching document type (or ALL)
+3. For each rule in priority order:
+   a. Check confidence score ≥ threshold
+   b. Check ALL required keywords are present in extracted text
+   c. If either check fails → REJECTED (with exact reason)
+4. If all rules pass → APPROVED
+5. If confidence is borderline (30–70%) → REVIEW
+```
+
+### Example rules
+
+| Rule Name | Type | Threshold | Keywords |
+|---|---|---|---|
+| Medical Document Check | MEDICAL | 70% | patient, doctor, hospital |
+| Student Document Check | STUDENT | 70% | student, college, register |
+| HR Document Check | HR | 70% | employee, designation, salary |
+| Legal Document Check | LEGAL | 70% | court, advocate, petition |
+| General Quality Check | ALL | 30% | *(none)* |
+
+---
+
 ## API Reference
 
 ### Authentication — Public
-
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/auth/register` | Register a new user |
 | `POST` | `/api/auth/login` | Login and receive JWT token |
 
 ### Documents
-
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `POST` | `/api/upload` | ADMIN, STAFF | Upload and process a document |
 | `GET` | `/api/documents/{id}` | Any | Get document details |
 
 ### Rules
-
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/rules` | Any | List all rules |
-| `POST` | `/api/rules` | ADMIN, STAFF | Create a new rule |
+| `POST` | `/api/rules` | ADMIN, STAFF | Create rule with type + keywords |
 | `DELETE` | `/api/rules/{id}` | ADMIN, STAFF | Delete a rule |
 | `PUT` | `/api/rules/{id}/toggle` | ADMIN, STAFF | Enable or disable a rule |
 
 ### Decisions
-
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/decisions` | Any | List all decisions |
 | `GET` | `/api/decisions/{id}` | Any | Get decision with rejection reason |
 
 ### Document Forwarding
-
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `POST` | `/api/forward` | ADMIN, STAFF | Forward document to any destination |
@@ -315,14 +346,12 @@ User ────────────────── uploads ────
 | `GET` | `/api/forward` | Any | List all forward records |
 
 ### Audit
-
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/audit` | ADMIN, STAFF | Full system audit log |
 | `GET` | `/api/audit/{docId}` | Any | Audit trail for a specific document |
 
 ### Users
-
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/users` | ADMIN | List all users |
@@ -339,7 +368,6 @@ User ────────────────── uploads ────
 POST /api/upload
 Authorization: Bearer <token>
 Content-Type: multipart/form-data
-
 file: <your-document>
 ```
 
@@ -350,22 +378,35 @@ file: <your-document>
   "data": {
     "documentId": 5,
     "decision": "APPROVED",
-    "status": "COMPLETED",
-    "folderPath": "uploads/approved"
+    "status": "APPROVED"
   }
 }
 ```
 
-**Decision Response — Rejected:**
+**Decision Response — Rejected (threshold):**
 ```json
 {
   "success": true,
   "data": {
     "documentId": 6,
     "decision": "REJECTED",
-    "decisionSource": "FAILED_RULE: Minimum Quality Check",
-    "decisionReason": "OCR confidence 58% is below required threshold of 80%",
-    "status": "COMPLETED"
+    "decisionSource": "FAILED_RULE: Priority 1 — Medical Document Check",
+    "decisionReason": "Confidence score 48% is below required threshold of 70%",
+    "status": "REJECTED"
+  }
+}
+```
+
+**Decision Response — Rejected (missing keyword):**
+```json
+{
+  "success": true,
+  "data": {
+    "documentId": 7,
+    "decision": "REJECTED",
+    "decisionSource": "FAILED_RULE: Priority 1 — Medical Document Check",
+    "decisionReason": "Required keyword 'hospital' not found in document. All keywords must be present: [patient, doctor, hospital]",
+    "status": "REJECTED"
   }
 }
 ```
@@ -376,27 +417,19 @@ file: <your-document>
 
 ```
 On document upload:
-
-  1. OCR service extracts text → confidence score generated
-
-  2. Active rules loaded and sorted by priority (P1 first)
-
-  3. For each rule:
-       IF confidence score < rule threshold
-           → REJECTED
-              Reason: "Failed rule: <name> — score <x>% below <threshold>%"
-              Stop. No further rules evaluated.
-
-  4. If all rules pass:
-       → APPROVED
-
-  5. If flagged for human review:
-       → REVIEW
-          Enters admin queue
-          Admin approves or rejects with comment
-          Audit log updated with final decision
-
-  6. All outcomes stored with full context in AuditLog
+  1. Document type auto-detected from content + filename
+  2. OCR text extracted (PDFBox for PDF, plain text for TXT/DOCX)
+  3. Confidence score calculated using 10 type-specific checks
+  4. Active rules loaded, filtered by document type, sorted by priority
+  5. For each applicable rule:
+       a. IF confidence score < rule threshold → REJECTED
+       b. IF any required keyword missing from text → REJECTED
+          Reason stored: exact rule name + keyword that failed
+          Stop. No further rules evaluated.
+  6. If all rules pass → APPROVED
+  7. If score is borderline (30-70%) and threshold failed → REVIEW
+       Enters admin queue for manual decision
+  8. All outcomes stored with full context in AuditLog
 ```
 
 ---
@@ -404,51 +437,72 @@ On document upload:
 ## Getting Started
 
 ### Prerequisites
-
 - Java 17+
 - Maven 3.6+
 - Node.js 18+ (for frontend)
 - IntelliJ IDEA (recommended)
 
 ### Run Backend
-
 ```powershell
-cd path/to/docflow
+cd path/to/documentworkflow
 mvn spring-boot:run
 ```
-
-API available at: `http://localhost:8080`
+API available at: `http://localhost:8080`  
 H2 Console (dev): `http://localhost:8080/h2-console`
 
 ### Run Frontend
-
 ```powershell
 cd docflow-frontend
 npm install
 npm run dev
 ```
-
 Frontend available at: `http://localhost:5173`
 
 ### Configuration
-
 `src/main/resources/application.properties`:
-
 ```properties
 server.port=8080
-
 spring.datasource.url=jdbc:h2:file:./documentworkflow_db
 spring.datasource.driver-class-name=org.h2.Driver
 spring.datasource.username=sa
 spring.datasource.password=
-
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
-
 spring.h2.console.enabled=true
 spring.h2.console.path=/h2-console
-
 jwt.secret=YourSecureSecretKeyHere
+```
+
+### Test Documents
+Create these in Notepad and upload to test all 3 decisions:
+
+**reject.txt** — empty form (score ~10%) → ❌ REJECTED
+```
+form
+name:
+date:
+```
+
+**review.txt** — partial content (score ~40-55%) → 🔄 REVIEW
+```
+COMPLAINT FORM
+Name: Priya Sharma
+Date: 05/03/2024
+Complaint: ATM issue Chennai
+```
+
+**approve.txt** — complete content (score ~80%+) → ✅ APPROVED
+```
+LOAN APPLICATION FORM
+Applicant Name: Rajesh Kumar
+Date of Birth: 15/08/1990
+PAN Number: ABCDE1234F
+Mobile: 9876543210
+Email: rajesh@gmail.com
+Address: 123 Anna Nagar Chennai
+Loan Amount: Rs. 500000
+Signature: Rajesh Kumar
+Date: 10/03/2024
 ```
 
 ---
@@ -462,13 +516,17 @@ jwt.secret=YourSecureSecretKeyHere
 | JWT authentication & security | ✅ Complete |
 | Role-based access control | ✅ Complete |
 | Document upload & management | ✅ Complete |
-| OCR integration | ✅ Complete |
+| PDF text extraction (PDFBox) | ✅ Complete |
+| Smart confidence scoring per document type | ✅ Complete |
+| Auto document type detection | ✅ Complete |
 | Rule engine with priority ordering | ✅ Complete |
-| System decision engine | ✅ Complete |
+| Document type filter per rule | ✅ Complete |
+| Required keywords per rule | ✅ Complete |
+| APPROVE / REVIEW / REJECT decision engine | ✅ Complete |
 | Document forwarding | ✅ Complete |
 | Email notifications on reject | ✅ Complete |
 | Audit logging | ✅ Complete |
-| React frontend | ✅ Complete |
+| React frontend with keyword rule UI | ✅ Complete |
 | Admin review module | 🔄 In Progress |
 | Production database migration | 🔄 In Progress |
 
@@ -483,6 +541,7 @@ jwt.secret=YourSecureSecretKeyHere
 - **Webhook integration** — push decisions to external systems in real time
 - **Export reports** — audit logs and decision history as Excel or PDF
 - **Mobile application** — document upload and status tracking on mobile
+- **Real OCR engine** — Tesseract / Google Vision for scanned image documents
 
 ---
 
@@ -494,5 +553,5 @@ This project is developed for academic and learning purposes.
 
 <div align="center">
   <strong>DocFlow</strong> · End-to-End Document Workflow Automation<br/>
-  <sub>Built with Spring Boot + React · Decisions that are transparent, explainable, and auditable by design</sub>
+  <sub>Built with Spring Boot + React · PDF extraction with PDFBox · Keyword-based rules per document type · Decisions that are transparent, explainable, and auditable by design</sub>
 </div>
