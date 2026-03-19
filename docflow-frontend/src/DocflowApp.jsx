@@ -513,6 +513,15 @@ function UploadPage({ token, setToast, setPage, setLastUpload }) {
 
   async function upload() {
     if (!file) { setToast({ msg: "Please select a file first", type: "warn" }); return; }
+
+    // Check if rules exist before uploading
+    const rulesCheck = await apiFetch("/rules", {}, token).catch(() => null);
+    if (!rulesCheck?.success || !rulesCheck?.data?.length) {
+      setToast({ msg: "⚠ No rules configured! Please set up rules first.", type: "error" });
+      setResult({ error: true });
+      return;
+    }
+
     setLoading(true); setResult(null);
     try {
       const fd = new FormData(); fd.append("file", file);
