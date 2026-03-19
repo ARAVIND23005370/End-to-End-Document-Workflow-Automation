@@ -187,6 +187,9 @@ function Sidebar({ page, setPage, user, onLogout, hasRules }) {
           </div>
         </div>
         <Btn variant="ghost" onClick={onLogout} full size="sm">Sign out</Btn>
+        <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: "var(--muted)", letterSpacing: ".03em" }}>
+          © 2026 <span style={{ fontWeight: 700 }}>Aravind R</span>
+        </div>
       </div>
     </aside>
   );
@@ -235,9 +238,20 @@ function LoginPage({ onLogin, onGoRegister }) {
           <div style={{ fontSize: 16, opacity: .85, lineHeight: 1.75, marginBottom: 36 }}>
             Universal document intelligence system for any organization — process, route, and track all your documents automatically.
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {["🎓  Colleges — Scholarship & admission", "🏥  Hospitals — Patient & billing docs", "🏢  Companies — Invoices & contracts", "🏛  Government — Applications & permits", "⚖  Legal firms — Case document routing"].map(t => (
-              <div key={t} style={{ fontSize: 13, opacity: .8, display: "flex", alignItems: "center", gap: 8 }}>{t}</div>
+          <div style={{ display: "grid", gap: 14 }}>
+            {[
+              { icon: "⚙", title: "Your rules, your logic", desc: "Define approval conditions that match exactly what your process requires" },
+              { icon: "⬡", title: "Priority-based routing", desc: "Documents are evaluated and sorted by priority level and department" },
+              { icon: "♦", title: "Clear decisions with reasons", desc: "Every approval or rejection includes the exact reason why" },
+              { icon: "≡", title: "Full audit trail", desc: "Every action is logged — who did what, when, and why" },
+            ].map(f => (
+              <div key={f.title} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, backdropFilter: "blur(4px)" }}>{f.icon}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 2 }}>{f.title}</div>
+                  <div style={{ fontSize: 12, opacity: .75, lineHeight: 1.5, color: "#fff" }}>{f.desc}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -260,6 +274,9 @@ function LoginPage({ onLogin, onGoRegister }) {
             No account? <span onClick={onGoRegister} style={{ color: "var(--accent)", cursor: "pointer", fontWeight: 600 }}>Create one →</span>
           </div>
         </div>
+      </div>
+      <div style={{ position: "fixed", bottom: 14, right: 24, fontSize: 11, color: "var(--muted)", letterSpacing: ".02em" }}>
+        © 2026 Designed & Developed by <span style={{ fontWeight: 700, color: "var(--text2)" }}>Aravind R</span>
       </div>
     </div>
   );
