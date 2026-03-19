@@ -148,7 +148,7 @@ function Sidebar({ page, setPage, user, onLogout, hasRules }) {
     <aside style={{ width: 228, background: "var(--surface)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
       <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src="/docflow-icon.svg" width={36} height={36} alt="DocFlow" />
+          <img src="/docflow-icon.jpeg" width={36} height={36} alt="DocFlow" />
           <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: "-.03em" }}>Flow<span style={{ color: "var(--accent)" }}>Doc</span></div>
         </div>
         <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "var(--mono)", marginTop: 2, letterSpacing: ".08em" }}>INTELLIGENT WORKFLOW</div>
