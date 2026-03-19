@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API = "https://docflow-backend-fhv4.onrender.com/api";
+const API = "http://localhost:8080/api";
 
 const G = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -148,7 +148,7 @@ function Sidebar({ page, setPage, user, onLogout, hasRules }) {
     <aside style={{ width: 228, background: "var(--surface)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
       <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src="/docflow-icon.jpeg" width={36} height={36} alt="DocFlow" />
+          <img src="/favicon.svg" width={36} height={36} alt="DocFlow" />
           <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: "-.03em" }}>Flow<span style={{ color: "var(--accent)" }}>Doc</span></div>
         </div>
         <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "var(--mono)", marginTop: 2, letterSpacing: ".08em" }}>INTELLIGENT WORKFLOW</div>
@@ -187,6 +187,9 @@ function Sidebar({ page, setPage, user, onLogout, hasRules }) {
           </div>
         </div>
         <Btn variant="ghost" onClick={onLogout} full size="sm">Sign out</Btn>
+        <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: "var(--muted)", letterSpacing: ".03em" }}>
+          © 2026 <span style={{ fontWeight: 700 }}>Aravind R</span>
+        </div>
       </div>
     </aside>
   );
@@ -207,7 +210,7 @@ function PageWrap({ title, subtitle, action, children }) {
   );
 }
 
-// ── LOGIN ─────────────────────────────────────────────
+// ── LOGIN ──────────────────────────────────────────────
 function LoginPage({ onLogin, onGoRegister }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -235,20 +238,9 @@ function LoginPage({ onLogin, onGoRegister }) {
           <div style={{ fontSize: 16, opacity: .85, lineHeight: 1.75, marginBottom: 36 }}>
             Universal document intelligence system for any organization — process, route, and track all your documents automatically.
           </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {[
-              { icon: "⚙", title: "Your rules, your logic", desc: "Define approval conditions that match exactly what your process requires" },
-              { icon: "⬡", title: "Priority-based routing", desc: "Documents are evaluated and sorted by priority level and department" },
-              { icon: "♦", title: "Clear decisions with reasons", desc: "Every approval or rejection includes the exact reason why" },
-              { icon: "≡", title: "Full audit trail", desc: "Every action is logged — who did what, when, and why" },
-            ].map(f => (
-              <div key={f.title} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 9, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, backdropFilter: "blur(4px)" }}>{f.icon}</div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 2 }}>{f.title}</div>
-                  <div style={{ fontSize: 12, opacity: .75, lineHeight: 1.5, color: "#fff" }}>{f.desc}</div>
-                </div>
-              </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {["🎓  Colleges — Scholarship & admission", "🏥  Hospitals — Patient & billing docs", "🏢  Companies — Invoices & contracts", "🏛  Government — Applications & permits", "⚖  Legal firms — Case document routing"].map(t => (
+              <div key={t} style={{ fontSize: 13, opacity: .8, display: "flex", alignItems: "center", gap: 8 }}>{t}</div>
             ))}
           </div>
         </div>
@@ -271,6 +263,10 @@ function LoginPage({ onLogin, onGoRegister }) {
             No account? <span onClick={onGoRegister} style={{ color: "var(--accent)", cursor: "pointer", fontWeight: 600 }}>Create one →</span>
           </div>
         </div>
+      </div>
+      {/* Copyright */}
+      <div style={{ position: "fixed", bottom: 14, right: 24, fontSize: 11, color: "var(--muted)", letterSpacing: ".02em" }}>
+        © 2026 Designed & Developed by <span style={{ fontWeight: 700, color: "var(--text2)" }}>Aravind R</span>
       </div>
     </div>
   );
@@ -325,7 +321,7 @@ function RuleSetupPage({ token, setToast, onRulesReady }) {
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ ruleName: "", conditionDescription: "", thresholdValue: "0.80", priority: "1", documentType: "ALL", requiredKeywords: "" });
+  const [form, setForm] = useState({ ruleName: "", conditionDescription: "", thresholdValue: "0.80", priority: "1" });
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   async function load() {
@@ -340,8 +336,8 @@ function RuleSetupPage({ token, setToast, onRulesReady }) {
   async function addRule() {
     if (!form.ruleName || !form.thresholdValue) { setToast({ msg: "Rule name and threshold required", type: "error" }); return; }
     setSaving(true);
-    const r = await fetch(`${API}/rules`, { method: "POST", headers: authH(token), body: JSON.stringify({ ruleName: form.ruleName, conditionDescription: form.conditionDescription, thresholdValue: parseFloat(form.thresholdValue), priority: parseInt(form.priority), active: true, documentType: form.documentType, requiredKeywords: form.requiredKeywords }) }).then(x => x.json()).catch(() => null);
-    if (r?.success) { setToast({ msg: "Rule added!", type: "success" }); setForm({ ruleName: "", conditionDescription: "", thresholdValue: "0.80", priority: "1", documentType: "ALL", requiredKeywords: "" }); load(); }
+    const r = await fetch(`${API}/rules`, { method: "POST", headers: authH(token), body: JSON.stringify({ ruleName: form.ruleName, conditionDescription: form.conditionDescription, thresholdValue: parseFloat(form.thresholdValue), priority: parseInt(form.priority), active: true }) }).then(x => x.json()).catch(() => null);
+    if (r?.success) { setToast({ msg: "Rule added!", type: "success" }); setForm({ ruleName: "", conditionDescription: "", thresholdValue: "0.80", priority: "1" }); load(); }
     else setToast({ msg: "Failed to add rule", type: "error" });
     setSaving(false);
   }
@@ -378,63 +374,9 @@ function RuleSetupPage({ token, setToast, onRulesReady }) {
                 <span style={{ fontWeight: 800, fontSize: 18, color: "var(--accent)", fontFamily: "var(--mono)", minWidth: 44 }}>{(parseFloat(form.thresholdValue || 0) * 100).toFixed(0)}%</span>
               </div>
             </Field>
-            <Select label="Priority"value={form.priority} onChange={e => sf("priority", e.target.value)}
+            <Select label="Priority" value={form.priority} onChange={e => sf("priority", e.target.value)}
               hint="Priority 1 rules are checked before priority 2, 3..."
               options={[{ value: "1", label: "Priority 1 — HIGH (most important, checked first)" }, { value: "2", label: "Priority 2 — MEDIUM" }, { value: "3", label: "Priority 3 — LOW (checked last)" }]} />
-            <Select label="Document Type — this rule applies to:" value={form.documentType} onChange={e => sf("documentType", e.target.value)}
-              hint="Rule will only be checked for documents of this type"
-              options={[
-                { value: "ALL",       label: "ALL — applies to every document type" },
-                { value: "LOAN",      label: "LOAN — loan applications" },
-                { value: "COMPLAINT", label: "COMPLAINT — customer complaints" },
-                { value: "INVOICE",   label: "INVOICE — bills and invoices" },
-                { value: "MEDICAL",   label: "MEDICAL — hospital / patient records" },
-                { value: "STUDENT",   label: "STUDENT — academic / college records" },
-                { value: "HR",        label: "HR — employee / payslip documents" },
-                { value: "LEGAL",     label: "LEGAL — court / legal documents" },
-                { value: "CONTRACT",  label: "CONTRACT — agreements and contracts" },
-                { value: "IDENTITY",  label: "IDENTITY — Aadhaar, PAN, Passport" },
-                { value: "FINANCIAL", label: "FINANCIAL — financial statements" },
-                { value: "GENERAL",   label: "GENERAL — all other documents" },
-              ]} />
-            <Field
-              label="Required Keywords (ALL must be present to pass)"
-              hint="Comma-separated. Document must contain ALL keywords. Leave empty to skip.">
-              <textarea
-                value={form.requiredKeywords}
-                onChange={e => sf("requiredKeywords", e.target.value)}
-                placeholder={
-                  form.documentType === "MEDICAL"   ? "e.g. patient, doctor, hospital, diagnosis" :
-                  form.documentType === "STUDENT"   ? "e.g. student, college, register, cgpa" :
-                  form.documentType === "HR"        ? "e.g. employee, designation, salary, joining" :
-                  form.documentType === "LEGAL"     ? "e.g. court, advocate, petition, clause" :
-                  form.documentType === "LOAN"      ? "e.g. applicant, pan, loan amount, signature" :
-                  form.documentType === "INVOICE"   ? "e.g. invoice, gst, amount, payment" :
-                  form.documentType === "COMPLAINT" ? "e.g. complaint, name, branch, signature" :
-                  form.documentType === "CONTRACT"  ? "e.g. agreement, parties, terms, signature" :
-                  form.documentType === "IDENTITY"  ? "e.g. name, dob, address, aadhaar" :
-                  "e.g. name, date, signature, address"
-                }
-                rows={3}
-                style={{
-                  width: "100%", padding: "9px 12px", borderRadius: 8,
-                  border: "1.5px solid var(--border)", background: "var(--surface2)",
-                  color: "var(--text)", fontSize: 13, fontFamily: "var(--mono)",
-                  resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.6
-                }}
-              />
-              {form.requiredKeywords && (
-                <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {form.requiredKeywords.split(",").map(k => k.trim()).filter(Boolean).map((kw, i) => (
-                    <span key={i} style={{
-                      background: "var(--accent-light)", color: "var(--accent)",
-                      border: "1px solid var(--accent)30", borderRadius: 5,
-                      padding: "2px 8px", fontSize: 11, fontWeight: 600, fontFamily: "var(--mono)"
-                    }}>✓ {kw}</span>
-                  ))}
-                </div>
-              )}
-            </Field>
             <Btn onClick={addRule} loading={saving} full>Add Rule</Btn>
           </div>
         </Card>
@@ -460,25 +402,10 @@ function RuleSetupPage({ token, setToast, onRulesReady }) {
                             <span style={{ fontWeight: 700, fontSize: 13 }}>{rule.ruleName}</span>
                             {!rule.active && <Badge color="var(--muted)" bg="var(--surface2)" border="var(--border)">DISABLED</Badge>}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>{rule.conditionDescription || "No description provided"}</div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, fontFamily: "var(--mono)", background: rule.active ? "var(--danger-light)" : "var(--surface2)", color: rule.active ? "var(--danger)" : "var(--muted)", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
-                              Reject if below {(rule.thresholdValue * 100).toFixed(0)}% confidence
-                            </span>
-                            <span style={{ fontSize: 11, fontFamily: "var(--mono)", background: "var(--accent-light)", color: "var(--accent)", padding: "2px 8px", borderRadius: 4, fontWeight: 600, border: "1px solid var(--accent)25" }}>
-                              {rule.documentType === "ALL" || !rule.documentType ? "ALL TYPES" : rule.documentType}
-                            </span>
-                          </div>
-                          {rule.requiredKeywords && (
-                            <div style={{ marginTop: 4 }}>
-                              <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 3, fontWeight: 600 }}>REQUIRED KEYWORDS:</div>
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                {rule.requiredKeywords.split(",").map(k => k.trim()).filter(Boolean).map((kw, i) => (
-                                  <span key={i} style={{ fontSize: 10, fontFamily: "var(--mono)", background: "#16a34a15", color: "#16a34a", border: "1px solid #16a34a30", padding: "1px 7px", borderRadius: 4, fontWeight: 600 }}>✓ {kw}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 5 }}>{rule.conditionDescription || "No description provided"}</div>
+                          <span style={{ fontSize: 11, fontFamily: "var(--mono)", background: rule.active ? "var(--danger-light)" : "var(--surface2)", color: rule.active ? "var(--danger)" : "var(--muted)", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
+                            Reject if below {(rule.thresholdValue * 100).toFixed(0)}% confidence
+                          </span>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                           <Btn variant="ghost" size="sm" onClick={() => toggle(rule.ruleId)}>{rule.active ? "Disable" : "Enable"}</Btn>
@@ -566,13 +493,14 @@ function DashboardPage({ token, user, setPage }) {
 }
 
 // ── UPLOAD ─────────────────────────────────────────────
-function UploadPage({ token, setToast, setPage, setLastUpload}){
+function UploadPage({ token, setToast, setPage, setLastUpload }) {
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
   function onDrop(e) { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) setFile(f); }
+
   async function upload() {
     if (!file) { setToast({ msg: "Please select a file first", type: "warn" }); return; }
     setLoading(true); setResult(null);
@@ -585,6 +513,7 @@ function UploadPage({ token, setToast, setPage, setLastUpload}){
     } catch { setToast({ msg: "Cannot connect to server", type: "error" }); }
     setLoading(false);
   }
+
   const approved = result?.decision === "APPROVED";
   const rejected = result?.decision === "REJECTED";
 
