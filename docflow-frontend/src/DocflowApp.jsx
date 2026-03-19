@@ -238,16 +238,27 @@ function LoginPage({ onLogin, onGoRegister }) {
           <div style={{ fontSize: 16, opacity: .85, lineHeight: 1.75, marginBottom: 36 }}>
             Universal document intelligence system for any organization — process, route, and track all your documents automatically.
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {["🎓  Colleges — Scholarship & admission", "🏥  Hospitals — Patient & billing docs", "🏢  Companies — Invoices & contracts", "🏛  Government — Applications & permits", "⚖  Legal firms — Case document routing"].map(t => (
-              <div key={t} style={{ fontSize: 13, opacity: .8, display: "flex", alignItems: "center", gap: 8 }}>{t}</div>
+          <div style={{ display: "grid", gap: 14 }}>
+            {[
+              { icon: "⚙", title: "Your rules, your logic", desc: "Define approval conditions that match exactly what your process requires" },
+              { icon: "⬡", title: "Priority-based routing", desc: "Documents are evaluated and sorted by priority level and department" },
+              { icon: "♦", title: "Clear decisions with reasons", desc: "Every approval or rejection includes the exact reason why" },
+              { icon: "≡", title: "Full audit trail", desc: "Every action is logged — who did what, when, and why" },
+            ].map(f => (
+              <div key={f.title} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, backdropFilter: "blur(4px)" }}>{f.icon}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 2 }}>{f.title}</div>
+                  <div style={{ fontSize: 12, opacity: .75, lineHeight: 1.5, color: "#fff" }}>{f.desc}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       </div>
 
       {/* Right */}
-      <div style={{ width: 460, display: "flex", alignItems: "center", justifyContent: "center", padding: 48 }}>
+      <div style={{ width: 560, display: "flex", alignItems: "center", justifyContent: "center", padding: 48 }}>
         <div style={{ width: "100%", animation: "fadeUp .4s ease" }}>
           <h2 style={{ fontSize: 25, fontWeight: 800, letterSpacing: "-.03em", marginBottom: 5 }}>Welcome back</h2>
           <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 28 }}>Sign in to your FlowDoc workspace</p>
@@ -264,7 +275,6 @@ function LoginPage({ onLogin, onGoRegister }) {
           </div>
         </div>
       </div>
-      {/* Copyright */}
       <div style={{ position: "fixed", bottom: 14, right: 24, fontSize: 11, color: "var(--muted)", letterSpacing: ".02em" }}>
         © 2026 Designed & Developed by <span style={{ fontWeight: 700, color: "var(--text2)" }}>Aravind R</span>
       </div>
