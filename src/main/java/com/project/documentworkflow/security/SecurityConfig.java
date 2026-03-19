@@ -31,9 +31,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
 
                         // ── Public — no token needed ──
+                        .requestMatchers("/health").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/health").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // ── ADMIN only ──
