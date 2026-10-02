@@ -33,9 +33,9 @@ target/
 .env
 .env.*
 !.env.example
-uploads/
-storage/
-scratch/
-mysql_data/
+/uploads/
+/storage/
+/scratch/
+/mysql_data/
 *.mv.db
 *.trace.db
