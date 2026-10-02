@@ -44,7 +44,7 @@ import {
 } from '../data/mockData';
 
 // --- Config ---
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://docflow-backend-fhv4.onrender.com/api';
 
 // Simulate network latency for realistic UX
 const delay = (ms = 400) => new Promise((r) => setTimeout(r, ms));
