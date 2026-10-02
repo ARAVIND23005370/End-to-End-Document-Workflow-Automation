@@ -1,0 +1,19 @@
+# E2EDocs robots.txt
+# Production domain: https://e2edocs.example.com (placeholder — update before deployment)
+
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /dashboard
+Disallow: /documents
+Disallow: /rules
+Disallow: /workflows
+Disallow: /notifications
+Disallow: /users
+Disallow: /audit-logs
+Disallow: /reports
+Disallow: /settings
+
+Sitemap: https://e2edocs.example.com/sitemap.xml
