@@ -71,6 +71,8 @@ export default function RuleBuilderPage() {
   const [evalOrder, setEvalOrder] = useState('10');
   const [conditionGroups, setConditionGroups] = useState<ConditionGroup[]>([DEFAULT_GROUP()]);
   const [actions, setActions] = useState<RuleAction[]>([DEFAULT_ACTION()]);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Sync existing rule when loaded
   useEffect(() => {
@@ -190,9 +192,36 @@ export default function RuleBuilderPage() {
     }
   };
 
-  const handleSave = () => {
-    // Save rule configuration
-    navigate('/rules');
+  const handleSave = async () => {
+    if (!name.trim()) {
+      setSaveError('Rule name is required');
+      return;
+    }
+
+    setSaveLoading(true);
+    setSaveError('');
+
+    try {
+      const payload = {
+        name: name.trim(),
+        description: description.trim(),
+        status,
+        evaluationOrder: parseInt(evalOrder, 10) || 1,
+        conditionGroups,
+        actions,
+      };
+
+      if (isNew) {
+        await ruleService.create(payload as any);
+      } else {
+        await ruleService.update(id!, payload as any);
+      }
+      navigate('/rules');
+    } catch (err: any) {
+      setSaveError(err?.message || 'Failed to save rule. Please try again.');
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   return (
@@ -209,11 +238,23 @@ export default function RuleBuilderPage() {
             </h1>
           </div>
           <div className="page-actions">
-            <Button variant="secondary" onClick={() => navigate('/rules')}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave}>Save Rule</Button>
+            <Button variant="secondary" onClick={() => navigate('/rules')} disabled={saveLoading}>Cancel</Button>
+            <Button variant="primary" onClick={handleSave} disabled={saveLoading}>
+              {saveLoading ? 'Saving…' : 'Save Rule'}
+            </Button>
           </div>
         </div>
       </div>
+
+      {saveError && (
+        <div style={{
+          marginBottom: 'var(--space-4)', padding: '12px 16px',
+          backgroundColor: 'var(--color-error-50, #fef2f2)', border: '1px solid var(--color-error-200, #fecaca)',
+          borderRadius: 'var(--radius-md, 6px)', color: 'var(--color-error-700, #b91c1c)', fontSize: 'var(--text-body-sm)'
+        }}>
+          {saveError}
+        </div>
+      )}
 
       {/* Rule Information */}
       <Card style={{ marginBottom: 'var(--space-4)' }}>

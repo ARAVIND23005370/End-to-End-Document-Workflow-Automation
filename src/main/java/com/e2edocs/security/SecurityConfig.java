@@ -79,13 +79,13 @@ public class SecurityConfig {
                         // Public or Pre-flight
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // User management and Org settings restricted to admin / super_admin
-                        .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "SUPER_ADMIN", "MANAGER", "REVIEWER", "USER")
+                        .requestMatchers("/api/users", "/api/users/**").hasAnyRole("ADMIN", "SUPER_ADMIN", "MANAGER", "REVIEWER", "USER")
                         .requestMatchers(HttpMethod.PUT, "/api/organization/settings").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         // Rules & Workflows management
-                        .requestMatchers("/api/rules/**").hasAnyRole("SUPER_ADMIN", "ADMIN", "MANAGER")
-                        .requestMatchers("/api/workflows/**").hasAnyRole("SUPER_ADMIN", "ADMIN", "MANAGER")
+                        .requestMatchers("/api/rules", "/api/rules/**").hasAnyRole("SUPER_ADMIN", "ADMIN", "MANAGER")
+                        .requestMatchers("/api/workflows", "/api/workflows/**").hasAnyRole("SUPER_ADMIN", "ADMIN", "MANAGER")
                         // Audit logs
-                        .requestMatchers("/api/audit-logs/**").hasAnyRole("SUPER_ADMIN", "ADMIN", "MANAGER")
+                        .requestMatchers("/api/audit-logs", "/api/audit-logs/**").hasAnyRole("SUPER_ADMIN", "ADMIN", "MANAGER")
                         // All other /api/** endpoints require authentication
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()

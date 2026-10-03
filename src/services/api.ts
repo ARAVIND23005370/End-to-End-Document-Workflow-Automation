@@ -328,33 +328,38 @@ export const documentService = {
 // ===========================
 export const ruleService = {
   async getAll(): Promise<Rule[]> {
-    await delay();
-    return mockRules;
+    return apiFetch<Rule[]>('/rules');
   },
 
   async getById(id: string): Promise<Rule> {
-    await delay(300);
-    const rule = mockRules.find((r) => r.id === id);
-    if (!rule) throw new Error('Rule not found');
-    return rule;
+    return apiFetch<Rule>(`/rules/${id}`);
   },
 
-  async create(_data: Partial<Rule>): Promise<Rule> {
-    await delay(500);
-    void _data;
-    return mockRules[0];
+  async create(data: Partial<Rule>): Promise<Rule> {
+    return apiFetch<Rule>('/rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
-  async update(id: string, _data: Partial<Rule>): Promise<Rule> {
-    await delay(500);
-    void _data;
-    const rule = mockRules.find((r) => r.id === id);
-    if (!rule) throw new Error('Rule not found');
-    return rule;
+  async update(id: string, data: Partial<Rule>): Promise<Rule> {
+    return apiFetch<Rule>(`/rules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
-  async delete(_id: string): Promise<void> {
-    await delay(300);
+  async delete(id: string): Promise<void> {
+    await apiFetch(`/rules/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async testRule(payload: any): Promise<any> {
+    return apiFetch('/rules/test', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 };
 

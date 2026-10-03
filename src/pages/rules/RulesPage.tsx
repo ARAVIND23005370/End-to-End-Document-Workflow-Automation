@@ -110,11 +110,29 @@ export default function RulesPage() {
                   <Dropdown
                     trigger={<Button variant="ghost" icon size="sm" aria-label="Actions"><MoreHorizontal size={14} /></Button>}
                   >
-                    <DropdownItem onClick={() => navigate(`/rules/${rule.id}`)}><Eye size={14} /> View</DropdownItem>
-                    <DropdownItem><Edit size={14} /> Edit</DropdownItem>
-                    <DropdownItem><Copy size={14} /> Duplicate</DropdownItem>
+                    <DropdownItem onClick={() => navigate(`/rules/${rule.id}`)}><Eye size={14} /> View / Edit</DropdownItem>
+                    <DropdownItem onClick={async () => {
+                      try {
+                        await ruleService.create({
+                          name: `${rule.name} (Copy)`,
+                          description: rule.description,
+                          status: 'draft',
+                          evaluationOrder: (rule.evaluationOrder || 1) + 1,
+                          conditionGroups: rule.conditionGroups,
+                          actions: rule.actions,
+                        } as any);
+                        refetch();
+                      } catch {}
+                    }}><Copy size={14} /> Duplicate</DropdownItem>
                     <div className="dropdown-separator" />
-                    <DropdownItem><Trash2 size={14} /> Delete</DropdownItem>
+                    <DropdownItem className="text-error" onClick={async () => {
+                      if (window.confirm(`Are you sure you want to delete rule "${rule.name}"?`)) {
+                        try {
+                          await ruleService.delete(rule.id);
+                          refetch();
+                        } catch {}
+                      }
+                    }}><Trash2 size={14} /> Delete</DropdownItem>
                   </Dropdown>
                 </div>
               </div>
