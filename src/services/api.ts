@@ -469,6 +469,18 @@ export const userService = {
       createdAt: u.createdAt || new Date().toISOString(),
     };
   },
+
+  async delete(id: string): Promise<void> {
+    await apiFetch(`/users/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async resendInvite(id: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/users/${id}/resend-invite`, {
+      method: 'POST',
+    });
+  },
 };
 
 // ===========================

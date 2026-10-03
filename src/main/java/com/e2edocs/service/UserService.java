@@ -214,4 +214,82 @@ public class UserService {
 
         return AuthService.mapToUserResponse(saved);
     }
+
+    @Transactional
+    public void deleteUser(String id, com.e2edocs.security.UserPrincipal principal) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
+
+        if (principal != null) {
+            if (!principal.getOrganizationId().equals(user.getOrganizationId())) {
+                throw new ResourceNotFoundException("User not found: " + id);
+            }
+            if (principal.getId().equals(user.getId())) {
+                throw new BadRequestException("You cannot delete your own active administrator account.");
+            }
+        }
+
+        String orgId = user.getOrganizationId();
+        String userEmail = user.getEmail();
+        String userName = user.getName();
+
+        // Remove any associated reset/invite tokens
+        passwordResetTokenRepository.deleteByUserId(id);
+
+        userRepository.delete(user);
+
+        String actorId = principal != null ? principal.getId() : "SYSTEM";
+        String actorName = principal != null ? principal.getName() : "System Admin";
+
+        auditService.log(orgId, actorId, actorName, AuditAction.DELETED,
+                "User", id, AuditStatus.SUCCESS, "Removed user account: " + userEmail + " (" + userName + ")", "SYSTEM");
+    }
+
+    @Transactional
+    public void resendInvite(String id, com.e2edocs.security.UserPrincipal principal) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
+
+        if (principal != null && !principal.getOrganizationId().equals(user.getOrganizationId())) {
+            throw new ResourceNotFoundException("User not found: " + id);
+        }
+
+        // Delete old unused tokens and generate a fresh 72-hour onboarding token
+        passwordResetTokenRepository.deleteByUserId(id);
+
+        String rawToken = UUID.randomUUID().toString();
+        String hashedToken = AuthService.hashToken(rawToken);
+        java.time.Instant expiresAt = java.time.Instant.now().plus(72, java.time.temporal.ChronoUnit.HOURS);
+        passwordResetTokenRepository.save(new com.e2edocs.entity.PasswordResetToken(hashedToken, user.getId(), expiresAt));
+
+        String baseUrl = (frontendUrl != null && !frontendUrl.isBlank()) ? frontendUrl.replaceAll("/+$", "") : "http://localhost:5173";
+        String setupUrl = baseUrl + "/reset-password?token=" + rawToken + "&email=" + user.getEmail();
+
+        String orgName = organizationRepository.findById(user.getOrganizationId())
+                .map(com.e2edocs.entity.Organization::getName)
+                .orElse("E2EDocs Workspace");
+
+        String inviterName = (principal != null && principal.getName() != null && !principal.getName().isBlank())
+                ? principal.getName()
+                : "Workspace Administrator";
+        String inviterEmail = (principal != null && principal.getEmail() != null && !principal.getEmail().isBlank())
+                ? principal.getEmail()
+                : "admin@e2edocs.com";
+
+        emailService.sendInvitationEmail(
+                user.getEmail(),
+                user.getName(),
+                inviterName,
+                inviterEmail,
+                orgName,
+                user.getRole().name(),
+                setupUrl
+        );
+
+        String actorId = principal != null ? principal.getId() : "SYSTEM";
+        String actorName = principal != null ? principal.getName() : "System Admin";
+
+        auditService.log(user.getOrganizationId(), actorId, actorName, AuditAction.UPDATED,
+                "User", user.getId(), AuditStatus.SUCCESS, "Resent invitation email to: " + user.getEmail(), "SYSTEM");
+    }
 }

@@ -396,11 +396,11 @@ public class DocumentService {
                     contentType
             );
 
-            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.SENT,
+            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.EXPORTED,
                     "Document", doc.getId(), AuditStatus.SUCCESS,
                     "Sent document '" + doc.getName() + "' by email to " + request.getRecipient().trim(), "SYSTEM");
         } catch (Exception e) {
-            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.SENT,
+            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.EXPORTED,
                     "Document", doc.getId(), AuditStatus.FAILURE,
                     "Failed sending document '" + doc.getName() + "' by email to " + request.getRecipient().trim() + ": " + e.getMessage(), "SYSTEM");
             throw e;

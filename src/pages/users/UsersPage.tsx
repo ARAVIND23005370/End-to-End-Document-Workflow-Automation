@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import {
   Plus, MoreHorizontal, Eye, Shield, Trash2, CheckCircle2,
-  Users as UsersIcon, X, KeyRound, AlertTriangle
+  Users as UsersIcon, X, KeyRound, AlertTriangle, Mail
 } from 'lucide-react';
 import {
   Button, Card, SearchInput, SelectField,
@@ -43,6 +43,9 @@ export default function UsersPage() {
   const [roleChangeLoading, setRoleChangeLoading] = useState(false);
   const [roleChangeError, setRoleChangeError] = useState('');
 
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<User | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Fetch real users from backend API
@@ -78,12 +81,39 @@ export default function UsersPage() {
       setInviteEmail('');
       setInviteRole('user');
       setInviteDept('');
-      showNotification('User invited successfully!');
+      showNotification('User invited successfully! Invitation email dispatched.');
       refetch();
     } catch (err: any) {
       setInviteError(err?.message || 'Failed to invite user');
     } finally {
       setInviteLoading(false);
+    }
+  };
+
+  // Handle Resend Invite
+  const handleResendInvite = async (user: User) => {
+    try {
+      await userService.resendInvite(user.id);
+      showNotification(`Invitation email resent to ${user.email}!`);
+    } catch (err: any) {
+      showNotification(err?.message || 'Failed to resend invitation email', 'error');
+    }
+  };
+
+  // Handle Remove / Delete User submission
+  const handleDeleteUserSubmit = async () => {
+    if (!deleteConfirmUser) return;
+    setDeleteLoading(true);
+
+    try {
+      await userService.delete(deleteConfirmUser.id);
+      showNotification(`User ${deleteConfirmUser.name} removed successfully.`);
+      setDeleteConfirmUser(null);
+      refetch();
+    } catch (err: any) {
+      showNotification(err?.message || 'Failed to remove user', 'error');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -259,6 +289,10 @@ export default function UsersPage() {
                             </DropdownItem>
                           )}
 
+                          <DropdownItem onClick={() => handleResendInvite(user)}>
+                            <Mail size={14} /> Resend Invitation
+                          </DropdownItem>
+
                           <DropdownItem onClick={() => handleResetPassword(user)}>
                             <KeyRound size={14} /> Reset Password
                           </DropdownItem>
@@ -270,11 +304,20 @@ export default function UsersPage() {
                               onClick={() => !isSelf && handleToggleStatus(user)}
                               className={isSelf ? 'opacity-50 cursor-not-allowed' : 'text-error'}
                             >
-                              <Trash2 size={14} /> Deactivate
+                              <Shield size={14} /> Deactivate
                             </DropdownItem>
                           ) : (
                             <DropdownItem onClick={() => handleToggleStatus(user)} className="text-success">
                               <CheckCircle2 size={14} /> Activate User
+                            </DropdownItem>
+                          )}
+
+                          {!isSelf && (
+                            <DropdownItem
+                              onClick={() => setDeleteConfirmUser(user)}
+                              className="text-error"
+                            >
+                              <Trash2 size={14} /> Remove User
                             </DropdownItem>
                           )}
                         </Dropdown>
@@ -515,6 +558,69 @@ export default function UsersPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================== */}
+      {/* 4. DELETE USER CONFIRMATION MODAL */}
+      {/* ====================================================== */}
+      {deleteConfirmUser && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: 'var(--space-4)'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-elevated, #ffffff)', borderRadius: 'var(--radius-lg, 8px)',
+            width: '100%', maxWidth: 440, border: '1px solid var(--border-primary, #e2e8f0)',
+            boxShadow: 'var(--shadow-xl)', overflow: 'hidden'
+          }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--border-secondary, #e2e8f0)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <AlertTriangle size={20} style={{ color: 'var(--color-error-600, #dc2626)' }} />
+                <h3 style={{ fontSize: 'var(--text-h4, 18px)', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                  Remove User
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmUser(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: 'var(--space-5)' }}>
+              <p style={{ margin: '0 0 var(--space-3) 0', color: 'var(--text-secondary)', fontSize: 'var(--text-body-sm)', lineHeight: 1.5 }}>
+                Are you sure you want to permanently remove <strong style={{ color: 'var(--text-primary)' }}>{deleteConfirmUser.name}</strong> (<code>{deleteConfirmUser.email}</code>)?
+              </p>
+              <p style={{ margin: 0, color: 'var(--color-error-600, #dc2626)', fontSize: 'var(--text-caption)', lineHeight: 1.4 }}>
+                This user account will be permanently deleted and all pending invitation/reset tokens will be revoked.
+              </p>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-6)' }}>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => setDeleteConfirmUser(null)}
+                  disabled={deleteLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  type="button"
+                  onClick={handleDeleteUserSubmit}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? 'Removing…' : 'Yes, Remove User'}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

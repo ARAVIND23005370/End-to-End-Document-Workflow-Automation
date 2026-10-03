@@ -65,4 +65,20 @@ public class UserController {
         UserResponse user = userService.updateUser(id, request, principal);
         return ResponseEntity.ok(user);
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<com.e2edocs.dto.MessageResponse> deleteUser(
+            @PathVariable String id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        userService.deleteUser(id, principal);
+        return ResponseEntity.ok(new com.e2edocs.dto.MessageResponse("User removed successfully"));
+    }
+
+    @PostMapping("/{id}/resend-invite")
+    public ResponseEntity<com.e2edocs.dto.MessageResponse> resendInvite(
+            @PathVariable String id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        userService.resendInvite(id, principal);
+        return ResponseEntity.ok(new com.e2edocs.dto.MessageResponse("Invitation email resent successfully"));
+    }
 }
