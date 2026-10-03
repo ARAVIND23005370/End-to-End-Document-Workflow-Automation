@@ -12,4 +12,14 @@ public interface EmailService {
      * Send manual document delivery email with original document attachment.
      */
     void sendDocumentEmail(String to, String subject, String message, String filename, byte[] attachmentBytes, String contentType);
+
+    /**
+     * Send user invitation email from admin.
+     */
+    void sendInvitationEmail(String to, String inviteeName, String inviterName, String inviterEmail, String orgName, String role, String setupUrl);
+
+    /**
+     * Send password reset email with secure token link.
+     */
+    void sendPasswordResetEmail(String to, String userName, String resetUrl);
 }

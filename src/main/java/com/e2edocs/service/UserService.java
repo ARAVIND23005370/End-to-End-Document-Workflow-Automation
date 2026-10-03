@@ -12,6 +12,8 @@ import com.e2edocs.entity.enums.UserStatus;
 import com.e2edocs.exception.BadRequestException;
 import com.e2edocs.exception.ResourceNotFoundException;
 import com.e2edocs.repository.DepartmentRepository;
+import com.e2edocs.repository.OrganizationRepository;
+import com.e2edocs.repository.PasswordResetTokenRepository;
 import com.e2edocs.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -26,18 +28,30 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
+    private final OrganizationRepository organizationRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
+    private final com.e2edocs.service.email.EmailService emailService;
+
+    @org.springframework.beans.factory.annotation.Value("${e2edocs.app.frontend-url:http://localhost:5173}")
+    private String frontendUrl = "http://localhost:5173";
 
     public UserService(
             UserRepository userRepository,
             DepartmentRepository departmentRepository,
+            OrganizationRepository organizationRepository,
+            PasswordResetTokenRepository passwordResetTokenRepository,
             PasswordEncoder passwordEncoder,
-            AuditService auditService) {
+            AuditService auditService,
+            com.e2edocs.service.email.EmailService emailService) {
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
+        this.organizationRepository = organizationRepository;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditService = auditService;
+        this.emailService = emailService;
     }
 
     @Transactional(readOnly = true)
@@ -66,6 +80,11 @@ public class UserService {
 
     @Transactional
     public UserResponse createUser(String organizationId, CreateUserRequest request) {
+        return createUser(organizationId, request, null);
+    }
+
+    @Transactional
+    public UserResponse createUser(String organizationId, CreateUserRequest request, com.e2edocs.security.UserPrincipal inviterPrincipal) {
         if (userRepository.existsByEmailIgnoreCase(request.getEmail())) {
             throw new BadRequestException("User with email " + request.getEmail() + " already exists");
         }
@@ -94,8 +113,38 @@ public class UserService {
 
         User saved = userRepository.save(user);
 
+        // Generate invitation & password setup token (valid for 72 hours)
+        String rawToken = UUID.randomUUID().toString();
+        String hashedToken = AuthService.hashToken(rawToken);
+        java.time.Instant expiresAt = java.time.Instant.now().plus(72, java.time.temporal.ChronoUnit.HOURS);
+        passwordResetTokenRepository.save(new com.e2edocs.entity.PasswordResetToken(hashedToken, saved.getId(), expiresAt));
+
+        String baseUrl = (frontendUrl != null && !frontendUrl.isBlank()) ? frontendUrl.replaceAll("/+$", "") : "http://localhost:5173";
+        String setupUrl = baseUrl + "/reset-password?token=" + rawToken + "&email=" + saved.getEmail();
+
+        String orgName = organizationRepository.findById(organizationId)
+                .map(com.e2edocs.entity.Organization::getName)
+                .orElse("E2EDocs Workspace");
+
+        String inviterName = (inviterPrincipal != null && inviterPrincipal.getName() != null && !inviterPrincipal.getName().isBlank())
+                ? inviterPrincipal.getName()
+                : "Workspace Administrator";
+        String inviterEmail = (inviterPrincipal != null && inviterPrincipal.getEmail() != null && !inviterPrincipal.getEmail().isBlank())
+                ? inviterPrincipal.getEmail()
+                : "admin@e2edocs.com";
+
+        emailService.sendInvitationEmail(
+                saved.getEmail(),
+                saved.getName(),
+                inviterName,
+                inviterEmail,
+                orgName,
+                saved.getRole().name(),
+                setupUrl
+        );
+
         auditService.log(organizationId, saved.getId(), saved.getName(), AuditAction.CREATED,
-                "User", saved.getId(), AuditStatus.SUCCESS, "Created new user: " + saved.getEmail(), "SYSTEM");
+                "User", saved.getId(), AuditStatus.SUCCESS, "Created and invited user: " + saved.getEmail() + " by " + inviterName, "SYSTEM");
 
         return AuthService.mapToUserResponse(saved);
     }

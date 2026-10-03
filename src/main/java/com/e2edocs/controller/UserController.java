@@ -44,7 +44,7 @@ public class UserController {
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody CreateUserRequest request) {
         String orgId = principal != null ? principal.getOrganizationId() : "org-001";
-        UserResponse user = userService.createUser(orgId, request);
+        UserResponse user = userService.createUser(orgId, request, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(user);
     }
 
@@ -53,7 +53,7 @@ public class UserController {
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody CreateUserRequest request) {
         String orgId = principal != null ? principal.getOrganizationId() : "org-001";
-        UserResponse user = userService.createUser(orgId, request);
+        UserResponse user = userService.createUser(orgId, request, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(user);
     }
 

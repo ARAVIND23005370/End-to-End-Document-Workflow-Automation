@@ -12,6 +12,7 @@ const LandingPage = lazy(() => import('../pages/public/LandingPage'));
 const LoginPage = lazy(() => import('../pages/auth/LoginPage'));
 const SignupPage = lazy(() => import('../pages/auth/SignupPage'));
 const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('../pages/auth/ResetPasswordPage'));
 const DashboardPage = lazy(() => import('../pages/dashboard/DashboardPage'));
 const DocumentsPage = lazy(() => import('../pages/documents/DocumentsPage'));
 const DocumentDetailPage = lazy(() => import('../pages/documents/DocumentDetailPage'));
@@ -48,6 +49,10 @@ export const router = createBrowserRouter([
   {
     path: '/forgot-password',
     element: <SuspenseWrapper><ForgotPasswordPage /></SuspenseWrapper>,
+  },
+  {
+    path: '/reset-password',
+    element: <SuspenseWrapper><ResetPasswordPage /></SuspenseWrapper>,
   },
 
   // Application (requires auth — enforcement deferred to backend integration)

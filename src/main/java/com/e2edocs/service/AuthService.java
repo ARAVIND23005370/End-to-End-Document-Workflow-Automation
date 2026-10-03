@@ -45,7 +45,11 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final AuditService auditService;
+    private final com.e2edocs.service.email.EmailService emailService;
     private final org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @org.springframework.beans.factory.annotation.Value("${e2edocs.app.frontend-url:http://localhost:5173}")
+    private String frontendUrl = "http://localhost:5173";
 
     public AuthService(
             UserRepository userRepository,
@@ -55,6 +59,7 @@ public class AuthService {
             AuthenticationManager authenticationManager,
             JwtService jwtService,
             AuditService auditService,
+            com.e2edocs.service.email.EmailService emailService,
             org.springframework.transaction.PlatformTransactionManager transactionManager) {
         this.userRepository = userRepository;
         this.organizationRepository = organizationRepository;
@@ -63,6 +68,7 @@ public class AuthService {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.auditService = auditService;
+        this.emailService = emailService;
         this.transactionManager = transactionManager;
     }
 
@@ -168,11 +174,15 @@ public class AuthService {
             PasswordResetToken resetToken = new PasswordResetToken(hashedToken, user.getId(), expiresAt);
             passwordResetTokenRepository.save(resetToken);
 
-            logger.info("Password reset requested for {}. In local dev mode, generated token: {}", user.getEmail(), rawToken);
+            String baseUrl = (frontendUrl != null && !frontendUrl.isBlank()) ? frontendUrl.replaceAll("/+$", "") : "http://localhost:5173";
+            String resetUrl = baseUrl + "/reset-password?token=" + rawToken + "&email=" + user.getEmail();
+
+            emailService.sendPasswordResetEmail(user.getEmail(), user.getName(), resetUrl);
+            logger.info("Password reset requested for {}. Generated reset URL: {}", user.getEmail(), resetUrl);
         }
 
         // Return generic success to prevent email enumeration
-        return new MessageResponse("If an account with that email exists, password reset instructions have been generated.");
+        return new MessageResponse("If an account with that email exists, password reset instructions have been sent to your email address.");
     }
 
     @Transactional
@@ -215,7 +225,7 @@ public class AuthService {
         return new MessageResponse("Password changed successfully");
     }
 
-    private String hashToken(String token) {
+    public static String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
