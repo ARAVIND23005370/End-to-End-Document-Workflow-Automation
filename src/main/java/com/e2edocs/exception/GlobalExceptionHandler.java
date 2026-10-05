@@ -28,6 +28,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
     }
 
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFound(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("status", HttpStatus.NOT_FOUND.value());
+        error.put("code", "NOT_FOUND");
+        error.put("message", "The requested resource was not found: " + ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(BadRequestException ex) {
         Map<String, Object> error = new HashMap<>();

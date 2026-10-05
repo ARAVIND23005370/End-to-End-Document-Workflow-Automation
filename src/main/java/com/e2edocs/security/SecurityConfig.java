@@ -73,7 +73,7 @@ public class SecurityConfig {
                         // Public Auth Endpoints
                         .requestMatchers(HttpMethod.GET, "/api/auth/signup/status").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
-                        .requestMatchers("/api/health").permitAll()
+                        .requestMatchers("/", "/health", "/api/health").permitAll()
                         // Public Actuator Health Probes & Info
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         // Public or Pre-flight
