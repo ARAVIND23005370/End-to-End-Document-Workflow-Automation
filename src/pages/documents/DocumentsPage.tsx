@@ -28,13 +28,12 @@ export default function DocumentsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const debouncedSearch = useDebouncedValue(search);
 
-  // Departments for dropdown
+  // Departments for optional upload routing
   const { data: departments = [] } = useAsync(() => organizationService.getDepartments(), []);
 
   // Fetch real documents from backend
@@ -45,11 +44,10 @@ export default function DocumentsPage() {
         status: statusFilter,
         priority: priorityFilter,
         source: sourceFilter,
-        department: departmentFilter,
       },
       { page, pageSize, sortBy: 'createdAt', sortOrder: 'desc' }
     ),
-    [debouncedSearch, statusFilter, priorityFilter, departmentFilter, sourceFilter, page]
+    [debouncedSearch, statusFilter, priorityFilter, sourceFilter, page]
   );
 
   const documents = result?.data || [];
@@ -150,7 +148,6 @@ export default function DocumentsPage() {
         status: statusFilter,
         priority: priorityFilter,
         source: sourceFilter,
-        department: departmentFilter,
       });
       showNotification('Document list CSV exported successfully.');
     } catch (err: any) {
@@ -287,13 +284,7 @@ export default function DocumentsPage() {
             value={sourceFilter}
             onChange={(e) => { setSourceFilter(e.target.value); setPage(1); }}
           />
-          <SelectField
-            options={(departments || []).map((d) => ({ value: d.name, label: d.name }))}
-            placeholder={(departments || []).length > 0 ? 'All departments' : 'All departments'}
-            value={departmentFilter}
-            onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }}
-          />
-          {(statusFilter || priorityFilter || departmentFilter || sourceFilter || search) && (
+          {(statusFilter || priorityFilter || sourceFilter || search) && (
             <Button
               variant="ghost"
               size="sm"
@@ -301,7 +292,6 @@ export default function DocumentsPage() {
                 setSearch('');
                 setStatusFilter('');
                 setPriorityFilter('');
-                setDepartmentFilter('');
                 setSourceFilter('');
                 setPage(1);
               }}
@@ -320,7 +310,7 @@ export default function DocumentsPage() {
           <EmptyState
             icon={<FileText size={40} />}
             title="No documents found"
-            description={search || statusFilter || priorityFilter || departmentFilter || sourceFilter
+            description={search || statusFilter || priorityFilter || sourceFilter
               ? 'Try adjusting your search or filters.'
               : 'Upload your first PDF, DOCX, or text document to get started.'}
             action={
