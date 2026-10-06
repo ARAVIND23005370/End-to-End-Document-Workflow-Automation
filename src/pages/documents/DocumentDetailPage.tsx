@@ -147,11 +147,67 @@ export default function DocumentDetailPage() {
             </div>
           </div>
           <div className="page-actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            {doc.status === 'review' && (
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  style={{ backgroundColor: 'var(--color-success-600, #16a34a)', borderColor: 'var(--color-success-600, #16a34a)' }}
+                  onClick={async () => {
+                    try {
+                      await documentService.update(doc.id, { status: 'approved' });
+                      refetch();
+                    } catch (e: any) {
+                      alert(e.message || 'Failed to approve document');
+                    }
+                  }}
+                >
+                  <CheckCircle size={14} /> Approve Document
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await documentService.update(doc.id, { status: 'rejected' });
+                      refetch();
+                    } catch (e: any) {
+                      alert(e.message || 'Failed to reject document');
+                    }
+                  }}
+                >
+                  <XCircle size={14} /> Reject Document
+                </Button>
+              </>
+            )}
             <Button variant="secondary" size="sm" onClick={handleDownload}><Download size={14} /> Download</Button>
-            <Button variant="primary" size="sm" onClick={handleOpenEmailModal}><Mail size={14} /> Send via Email</Button>
+            <Button variant="secondary" size="sm" onClick={handleOpenEmailModal}><Mail size={14} /> Send via Email</Button>
           </div>
         </div>
       </div>
+
+      {/* Missing Fields / Rejection Alert Banner */}
+      {(doc.missingFields || doc.decisionReason) && (
+        <div style={{
+          backgroundColor: doc.status === 'rejected' ? 'var(--color-error-50, #fef2f2)' : 'var(--color-warning-50, #fffbeb)',
+          border: `1px solid ${doc.status === 'rejected' ? 'var(--color-error-200, #fecaca)' : 'var(--color-warning-200, #fde68a)'}`,
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-3) var(--space-4)',
+          marginBottom: 'var(--space-4)',
+          fontSize: 'var(--text-body-sm)',
+        }}>
+          {doc.decisionReason && (
+            <div style={{ fontWeight: 600, marginBottom: doc.missingFields ? 'var(--space-1)' : 0 }}>
+              {doc.decisionReason}
+            </div>
+          )}
+          {doc.missingFields && (
+            <div style={{ color: doc.status === 'rejected' ? 'var(--color-error-700, #b91c1c)' : 'var(--color-warning-800, #92400e)' }}>
+              <strong>Missing / Required Fields Detected:</strong> {doc.missingFields}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Key info bar */}
       <div style={{ display: 'flex', gap: 'var(--space-6)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
@@ -161,7 +217,7 @@ export default function DocumentDetailPage() {
         <InfoPair icon={<Share2 size={14} />} label="Source" value={sourceLabel} />
         <InfoPair icon={<Building2 size={14} />} label="Department" value={doc.department || 'Not assigned'} />
         <InfoPair icon={<User size={14} />} label="Assigned To" value={doc.assignedTo || 'Unassigned'} />
-        <InfoPair icon={<FileText size={14} />} label="Type" value={doc.type} />
+        <InfoPair icon={<FileText size={14} />} label="Folder / Category" value={doc.folder || doc.type} />
         <InfoPair label="Size" value={formatFileSize(doc.size)} />
       </div>
 

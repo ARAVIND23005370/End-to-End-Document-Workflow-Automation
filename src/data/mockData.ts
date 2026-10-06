@@ -266,6 +266,7 @@ export const mockRules: Rule[] = [
     name: 'External Email Ingestion Routing',
     description: 'Matches incoming emails from partner domains and sets priority and assignment.',
     status: 'active',
+    ruleType: 'routing',
     evaluationOrder: 10,
     conditionGroups: [
       {
@@ -302,6 +303,7 @@ export const mockRules: Rule[] = [
     name: 'Customer Support Escalation',
     description: 'Identifies customer request documents and initiates the support intake workflow.',
     status: 'active',
+    ruleType: 'routing',
     evaluationOrder: 20,
     conditionGroups: [
       {
@@ -329,6 +331,7 @@ export const mockRules: Rule[] = [
     name: 'High-Priority Content Scanner',
     description: 'Triggers critical priority when specific audit or risk keywords appear in content or description.',
     status: 'active',
+    ruleType: 'sorting',
     evaluationOrder: 5,
     conditionGroups: [
       {

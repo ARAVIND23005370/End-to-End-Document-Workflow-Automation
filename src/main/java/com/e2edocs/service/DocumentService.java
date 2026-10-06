@@ -318,6 +318,34 @@ public class DocumentService {
     }
 
     @Transactional
+    public BatchUploadResponse createDocumentsBatch(String organizationId, List<MultipartFile> files, DocumentCreateRequest request, String userId, String userName) {
+        if (files == null || files.isEmpty()) {
+            throw new BadRequestException("No files provided for batch upload.");
+        }
+
+        List<DocumentResponse> successfulDocs = new ArrayList<>();
+        Map<String, String> errors = new HashMap<>();
+
+        for (MultipartFile file : files) {
+            String originalFilename = file != null ? file.getOriginalFilename() : "Unknown";
+            try {
+                DocumentResponse docResponse = createDocument(organizationId, file, request, userId, userName);
+                successfulDocs.add(docResponse);
+            } catch (Exception e) {
+                errors.put(originalFilename, e.getMessage());
+            }
+        }
+
+        return new BatchUploadResponse(
+                files.size(),
+                successfulDocs.size(),
+                errors.size(),
+                successfulDocs,
+                errors
+        );
+    }
+
+    @Transactional
     public void sendDocumentByEmail(String documentId, DocumentSendEmailRequest request, String userId, String userName, String callerOrgId) {
         Document doc = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
@@ -396,11 +424,11 @@ public class DocumentService {
                     contentType
             );
 
-            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.EXPORTED,
+            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.SENT,
                     "Document", doc.getId(), AuditStatus.SUCCESS,
                     "Sent document '" + doc.getName() + "' by email to " + request.getRecipient().trim(), "SYSTEM");
         } catch (Exception e) {
-            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.EXPORTED,
+            auditService.log(doc.getOrganizationId(), userId, userName, AuditAction.SENT,
                     "Document", doc.getId(), AuditStatus.FAILURE,
                     "Failed sending document '" + doc.getName() + "' by email to " + request.getRecipient().trim() + ": " + e.getMessage(), "SYSTEM");
             throw e;
@@ -505,6 +533,9 @@ public class DocumentService {
         res.setSize(doc.getSize() != null ? doc.getSize() : 0L);
         res.setRuleMatches(doc.getRuleMatches() != null ? doc.getRuleMatches() : 0);
         res.setWorkflowId(doc.getWorkflowId());
+        res.setDecisionReason(doc.getDecisionReason());
+        res.setMissingFields(doc.getMissingFields());
+        res.setFolder(doc.getType());
 
         if (doc.getTags() != null && !doc.getTags().isBlank()) {
             res.setTags(Arrays.stream(doc.getTags().split(","))
@@ -517,6 +548,9 @@ public class DocumentService {
             try {
                 Map<String, Object> meta = objectMapper.readValue(doc.getMetadataJson(), new TypeReference<Map<String, Object>>() {});
                 res.setMetadata(meta);
+                if (meta.containsKey("folder") && meta.get("folder") != null) {
+                    res.setFolder(String.valueOf(meta.get("folder")));
+                }
             } catch (Exception ignored) {
             }
         }

@@ -114,11 +114,12 @@ export function Input({ label, error, helper, className, id, ...props }: InputPr
 interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
+  helper?: string;
   options: { value: string; label: string }[];
   placeholder?: string;
 }
 
-export function SelectField({ label, error, options, placeholder, className, id, ...props }: SelectFieldProps) {
+export function SelectField({ label, error, helper, options, placeholder, className, id, ...props }: SelectFieldProps) {
   const selectId = id || label?.toLowerCase().replace(/\s+/g, '-');
   return (
     <div className="input-group">
@@ -127,6 +128,7 @@ export function SelectField({ label, error, options, placeholder, className, id,
         id={selectId}
         className={cn('input-field', 'select-field', error && 'input-field-error', className)}
         aria-invalid={!!error}
+        aria-describedby={error ? `${selectId}-error` : helper ? `${selectId}-helper` : undefined}
         {...props}
       >
         {placeholder && <option value="">{placeholder}</option>}
@@ -134,7 +136,8 @@ export function SelectField({ label, error, options, placeholder, className, id,
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
-      {error && <span className="input-error-text" role="alert">{error}</span>}
+      {error && <span id={`${selectId}-error`} className="input-error-text" role="alert">{error}</span>}
+      {!error && helper && <span id={`${selectId}-helper`} className="input-helper">{helper}</span>}
     </div>
   );
 }
@@ -286,7 +289,7 @@ export function DropdownItem({ children, onClick, className }: { children: React
 // --- Tabs ---
 interface TabItem {
   id: string;
-  label: string;
+  label: ReactNode;
 }
 
 interface TabsProps {

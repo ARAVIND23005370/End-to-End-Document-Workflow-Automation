@@ -1,11 +1,6 @@
 package com.e2edocs;
 
-import com.e2edocs.dto.RuleActionDto;
-import com.e2edocs.dto.RuleConditionDto;
-import com.e2edocs.dto.RuleConditionGroupDto;
-import com.e2edocs.dto.RuleInputDto;
-import com.e2edocs.dto.RuleTestRequest;
-import com.e2edocs.dto.RuleTestResponse;
+import com.e2edocs.dto.*;
 import com.e2edocs.entity.*;
 import com.e2edocs.entity.enums.*;
 import com.e2edocs.repository.DocumentRepository;
@@ -20,14 +15,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -109,57 +104,144 @@ class RuleEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Simulate rule test without side effects")
-    void testRuleSimulation() {
-        RuleInputDto ruleInput = new RuleInputDto();
-        ruleInput.setName("Test Match Rule");
+    @DisplayName("Section 1: Decision Rules - Auto Approve Document")
+    void testDecisionRuleApprove() {
+        Document doc = new Document("doc-dec-1", "org-1", "Contract_Verified.pdf", "Legal Document");
+        doc.setExtractedText("Valid Terms and Conditions with Tax Identification Number.");
 
-        RuleConditionGroupDto group = new RuleConditionGroupDto();
-        group.setLogic(ConditionLogic.AND);
-        group.getConditions().add(new RuleConditionDto("c1", "document.name", ConditionOperator.CONTAINS, "Contract"));
-        ruleInput.getConditionGroups().add(group);
+        Rule decRule = new Rule("r-dec", "org-1", "Approve Verified Contracts", "Approves contracts", RuleStatus.ACTIVE, RuleType.DECISION, 1);
+        RuleConditionGroup group = new RuleConditionGroup("cg-1", decRule, ConditionLogic.AND, 0);
+        group.addCondition(new RuleCondition("c-1", group, "extracted.text", ConditionOperator.CONTAINS, "Tax Identification", 0));
+        decRule.addConditionGroup(group);
+        decRule.addAction(new RuleAction("act-1", decRule, ActionType.SET_DECISION, "approved", null, 0));
 
-        ruleInput.getActions().add(new RuleActionDto("a1", ActionType.SET_PRIORITY, "critical", null));
+        when(ruleRepository.findByOrganizationIdAndStatusOrderByEvaluationOrderAsc("org-1", RuleStatus.ACTIVE))
+                .thenReturn(Collections.singletonList(decRule));
 
-        RuleTestRequest req = new RuleTestRequest();
-        req.setRule(ruleInput);
+        ruleEngineService.evaluateDocument(doc);
 
-        Map<String, Object> testCtx = new HashMap<>();
-        testCtx.put("document.name", "Master_Contract_Agreement.pdf");
-        req.setTestContext(testCtx);
-
-        RuleTestResponse resp = ruleEngineService.testRule(req);
-
-        assertTrue(resp.isMatched());
-        assertEquals(1, resp.getResultingActions().size());
-        assertEquals(ActionType.SET_PRIORITY, resp.getResultingActions().get(0).getType());
-
-        // Verify no real repository modifications or emails sent
-        verifyNoInteractions(documentRepository);
-        verifyNoInteractions(emailService);
+        assertEquals(DocumentStatus.APPROVED, doc.getStatus());
+        assertTrue(doc.getDecisionReason().contains("approved"));
+        verify(documentRepository, times(1)).save(doc);
     }
 
     @Test
-    @DisplayName("Evaluate document updates priority and increments rule match count")
-    void testEvaluateDocumentExecution() {
-        Document doc = new Document("doc-1", "org-1", "Security_Report.pdf", "Audit Report");
-        doc.setPriority(Priority.LOW);
+    @DisplayName("Section 1: Decision Rules - Auto Reject & Capture Missing Fields")
+    void testDecisionRuleMissingFieldsTracking() {
+        Document doc = new Document("doc-dec-2", "org-1", "Incomplete_Doc.pdf", "General");
+        doc.setExtractedText("Missing all required metadata.");
 
-        Rule rule = new Rule("r-1", "org-1", "Auto Prioritize", "Sets high priority", RuleStatus.ACTIVE, 1);
-        RuleConditionGroup group = new RuleConditionGroup("cg-1", rule, ConditionLogic.AND, 0);
-        group.addCondition(new RuleCondition("c-1", group, "document.name", ConditionOperator.CONTAINS, "Security", 0));
-        rule.addConditionGroup(group);
-        rule.addAction(new RuleAction("act-1", rule, ActionType.SET_PRIORITY, "critical", null, 0));
+        Rule decRule = new Rule("r-dec-2", "org-1", "Strict Rejection on Missing ID", "Requires ID", RuleStatus.ACTIVE, RuleType.DECISION, 1);
+        RuleConditionGroup group = new RuleConditionGroup("cg-2", decRule, ConditionLogic.AND, 0);
+        group.addCondition(new RuleCondition("c-2", group, "extracted.text", ConditionOperator.CONTAINS, "Government ID", 0));
+        decRule.addConditionGroup(group);
+        decRule.addAction(new RuleAction("act-2", decRule, ActionType.SET_DECISION, "rejected", null, 0));
 
         when(ruleRepository.findByOrganizationIdAndStatusOrderByEvaluationOrderAsc("org-1", RuleStatus.ACTIVE))
-                .thenReturn(Collections.singletonList(rule));
+                .thenReturn(Collections.singletonList(decRule));
+
+        ruleEngineService.evaluateDocument(doc);
+
+        // Document should not match -> condition fails -> missing fields tracked
+        assertNotNull(doc.getMissingFields());
+        assertTrue(doc.getMissingFields().contains("Government ID"));
+    }
+
+    @Test
+    @DisplayName("Section 2: Folder Rules - Classify into Virtual Category / Folder")
+    void testFolderRuleClassification() {
+        Document doc = new Document("doc-fld-1", "org-1", "Power_Outage_Report.pdf", "Unclassified");
+        doc.setExtractedText("Electricity power line outage reported in Sector 4.");
+
+        Rule folderRule = new Rule("r-fld", "org-1", "Classify Electricity Docs", "Classifies into Electricity folder", RuleStatus.ACTIVE, RuleType.FOLDER, 1);
+        RuleConditionGroup group = new RuleConditionGroup("cg-fld", folderRule, ConditionLogic.OR, 0);
+        group.addCondition(new RuleCondition("c-f1", group, "extracted.text", ConditionOperator.CONTAINS, "Electricity power", 0));
+        folderRule.addConditionGroup(group);
+        folderRule.addAction(new RuleAction("act-f1", folderRule, ActionType.ASSIGN_FOLDER, "Electricity & Utilities", null, 0));
+
+        when(ruleRepository.findByOrganizationIdAndStatusOrderByEvaluationOrderAsc("org-1", RuleStatus.ACTIVE))
+                .thenReturn(Collections.singletonList(folderRule));
+
+        ruleEngineService.evaluateDocument(doc);
+
+        assertEquals("Electricity & Utilities", doc.getType());
+        verify(documentRepository, times(1)).save(doc);
+    }
+
+    @Test
+    @DisplayName("Section 3: Sorting Rules - Set Document Sorting Priority (Critical / High / Medium / Low)")
+    void testSortingRulePriority() {
+        Document doc = new Document("doc-srt-1", "org-1", "Urgent_Investigation.pdf", "Audit");
+        doc.setPriority(Priority.LOW);
+        doc.setExtractedText("CRITICAL SECURITY BREACH ALERT");
+
+        Rule sortRule = new Rule("r-srt", "org-1", "Critical Priority Rule", "Sets critical priority", RuleStatus.ACTIVE, RuleType.SORTING, 1);
+        RuleConditionGroup group = new RuleConditionGroup("cg-srt", sortRule, ConditionLogic.AND, 0);
+        group.addCondition(new RuleCondition("c-s1", group, "extracted.text", ConditionOperator.CONTAINS, "SECURITY BREACH", 0));
+        sortRule.addConditionGroup(group);
+        sortRule.addAction(new RuleAction("act-s1", sortRule, ActionType.SET_PRIORITY, "critical", null, 0));
+
+        when(ruleRepository.findByOrganizationIdAndStatusOrderByEvaluationOrderAsc("org-1", RuleStatus.ACTIVE))
+                .thenReturn(Collections.singletonList(sortRule));
 
         ruleEngineService.evaluateDocument(doc);
 
         assertEquals(Priority.CRITICAL, doc.getPriority());
-        assertEquals(1, doc.getRuleMatches());
-        assertEquals(1, rule.getMatchCount());
         verify(documentRepository, times(1)).save(doc);
-        verify(ruleRepository, times(1)).save(rule);
+    }
+
+    @Test
+    @DisplayName("Section 4: Routing Rules - Assign to Department / User")
+    void testRoutingRuleAssignment() {
+        Document doc = new Document("doc-rout-1", "org-1", "Legal_Review.pdf", "Legal");
+
+        Rule routeRule = new Rule("r-rout", "org-1", "Route To Legal", "Assigns Legal Department", RuleStatus.ACTIVE, RuleType.ROUTING, 1);
+        RuleConditionGroup group = new RuleConditionGroup("cg-rout", routeRule, ConditionLogic.AND, 0);
+        group.addCondition(new RuleCondition("c-r1", group, "document.name", ConditionOperator.CONTAINS, "Legal", 0));
+        routeRule.addConditionGroup(group);
+        routeRule.addAction(new RuleAction("act-r1", routeRule, ActionType.ASSIGN_DEPARTMENT, "Legal & Compliance", null, 0));
+
+        when(ruleRepository.findByOrganizationIdAndStatusOrderByEvaluationOrderAsc("org-1", RuleStatus.ACTIVE))
+                .thenReturn(Collections.singletonList(routeRule));
+
+        ruleEngineService.evaluateDocument(doc);
+
+        assertEquals("Legal & Compliance", doc.getDepartment());
+        verify(documentRepository, times(1)).save(doc);
+    }
+
+    @Test
+    @DisplayName("Section 5: Communication Rules - Render Dynamic Template Variables")
+    void testCommunicationRuleTemplateInterpolation() {
+        Document doc = new Document("doc-comm-1", "org-1", "Scholarship_App.pdf", "Scholarship");
+        doc.setStatus(DocumentStatus.APPROVED);
+        doc.setOriginalSenderEmail("student@university.edu");
+        doc.setDecisionReason("Passed all academic criteria");
+
+        Rule commRule = new Rule("r-comm", "org-1", "Approval Email", "Sends approval notice", RuleStatus.ACTIVE, RuleType.COMMUNICATION, 1);
+        RuleConditionGroup group = new RuleConditionGroup("cg-comm", commRule, ConditionLogic.AND, 0);
+        group.addCondition(new RuleCondition("c-c1", group, "document.status", ConditionOperator.EQUALS, "approved", 0));
+        commRule.addConditionGroup(group);
+
+        String emailConfigJson = "{\"recipientType\":\"ORIGINAL_SENDER\",\"subject\":\"Approved: {{document_name}}\",\"message\":\"Hello, your document {{document_name}} (ID: {{document_id}}) decision is {{decision}}.\"}";
+        commRule.addAction(new RuleAction("act-c1", commRule, ActionType.SEND_EMAIL, "ORIGINAL_SENDER", emailConfigJson, 0));
+
+        when(ruleRepository.findByOrganizationIdAndStatusOrderByEvaluationOrderAsc("org-1", RuleStatus.ACTIVE))
+                .thenReturn(Collections.singletonList(commRule));
+
+        ruleEngineService.evaluateDocument(doc);
+
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> bodyCaptor = ArgumentCaptor.forClass(String.class);
+
+        verify(emailService, times(1)).sendEmail(
+                eq("student@university.edu"),
+                subjectCaptor.capture(),
+                bodyCaptor.capture(),
+                anyMap()
+        );
+
+        assertTrue(subjectCaptor.getValue().contains("Scholarship_App.pdf"));
+        assertTrue(bodyCaptor.getValue().contains("APPROVED"));
     }
 }

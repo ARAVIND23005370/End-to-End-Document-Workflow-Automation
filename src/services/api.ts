@@ -15,6 +15,7 @@ import type {
   Priority,
   DocumentSource,
   Rule,
+  RuleType,
   Workflow,
   User,
   UserRole,
@@ -120,6 +121,9 @@ function mapDoc(d: any): Document {
     departmentId: d.departmentId || '',
     assignedTo: d.assignedTo || '',
     assignedToId: d.assignedToId || '',
+    decisionReason: d.decisionReason || '',
+    missingFields: d.missingFields || '',
+    folder: d.folder || d.type || 'General Document',
     createdAt: d.createdAt || new Date().toISOString(),
     updatedAt: d.updatedAt || d.createdAt || new Date().toISOString(),
     size: d.size || 0,
@@ -222,6 +226,48 @@ export const documentService = {
 
     const d = await res.json();
     return mapDoc(d);
+  },
+
+  async uploadBatch(files: File[], meta?: { type?: string; priority?: string; department?: string; description?: string }): Promise<{ totalFiles: number; successful: number; failed: number; documents: Document[]; errors: Record<string, string> }> {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+    if (meta?.type) formData.append('type', meta.type);
+    if (meta?.priority) formData.append('priority', meta.priority.toUpperCase());
+    if (meta?.department) formData.append('department', meta.department);
+    if (meta?.description) formData.append('description', meta.description);
+
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE}/documents/batch`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      let errorMsg = `Batch upload failed (${res.status})`;
+      try {
+        const data = await res.json();
+        if (data.message) errorMsg = data.message;
+        else if (data.error) errorMsg = data.error;
+      } catch {}
+      throw new Error(errorMsg);
+    }
+
+    const result = await res.json();
+    return {
+      totalFiles: result.totalFiles || files.length,
+      successful: result.successful || 0,
+      failed: result.failed || 0,
+      documents: (result.documents || []).map(mapDoc),
+      errors: result.errors || {},
+    };
   },
 
   async create(data: Partial<Document>): Promise<Document> {
@@ -327,8 +373,9 @@ export const documentService = {
 // Rule Service
 // ===========================
 export const ruleService = {
-  async getAll(): Promise<Rule[]> {
-    return apiFetch<Rule[]>('/rules');
+  async getAll(ruleType?: RuleType): Promise<Rule[]> {
+    const url = ruleType ? `/rules?ruleType=${ruleType}` : '/rules';
+    return apiFetch<Rule[]>(url);
   },
 
   async getById(id: string): Promise<Rule> {

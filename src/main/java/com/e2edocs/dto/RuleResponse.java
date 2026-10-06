@@ -1,6 +1,7 @@
 package com.e2edocs.dto;
 
 import com.e2edocs.entity.enums.RuleStatus;
+import com.e2edocs.entity.enums.RuleType;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +11,7 @@ public class RuleResponse {
     private String name;
     private String description;
     private RuleStatus status;
+    private RuleType ruleType;
     private Integer evaluationOrder;
     private List<RuleConditionGroupDto> conditionGroups = new ArrayList<>();
     private List<RuleActionDto> actions = new ArrayList<>();
@@ -52,6 +54,14 @@ public class RuleResponse {
 
     public void setStatus(RuleStatus status) {
         this.status = status;
+    }
+
+    public RuleType getRuleType() {
+        return ruleType;
+    }
+
+    public void setRuleType(RuleType ruleType) {
+        this.ruleType = ruleType;
     }
 
     public Integer getEvaluationOrder() {

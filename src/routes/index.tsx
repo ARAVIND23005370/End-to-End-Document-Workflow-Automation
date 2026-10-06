@@ -16,6 +16,11 @@ const ResetPasswordPage = lazy(() => import('../pages/auth/ResetPasswordPage'));
 const DashboardPage = lazy(() => import('../pages/dashboard/DashboardPage'));
 const DocumentsPage = lazy(() => import('../pages/documents/DocumentsPage'));
 const DocumentDetailPage = lazy(() => import('../pages/documents/DocumentDetailPage'));
+const DecisionRulesPage = lazy(() => import('../pages/rules/DecisionRulesPage'));
+const FolderClassificationPage = lazy(() => import('../pages/rules/FolderClassificationPage'));
+const FolderSortingPage = lazy(() => import('../pages/rules/FolderSortingPage'));
+const RoutingPage = lazy(() => import('../pages/rules/RoutingPage'));
+const CommunicationPage = lazy(() => import('../pages/rules/CommunicationPage'));
 const RulesPage = lazy(() => import('../pages/rules/RulesPage'));
 const RuleBuilderPage = lazy(() => import('../pages/rules/RuleBuilderPage'));
 const WorkflowsPage = lazy(() => import('../pages/workflows/WorkflowsPage'));
@@ -63,6 +68,11 @@ export const router = createBrowserRouter([
       { path: 'dashboard', element: <SuspenseWrapper><DashboardPage /></SuspenseWrapper> },
       { path: 'documents', element: <SuspenseWrapper><DocumentsPage /></SuspenseWrapper> },
       { path: 'documents/:id', element: <SuspenseWrapper><DocumentDetailPage /></SuspenseWrapper> },
+      { path: 'decision-rules', element: <SuspenseWrapper><DecisionRulesPage /></SuspenseWrapper> },
+      { path: 'folder-classification', element: <SuspenseWrapper><FolderClassificationPage /></SuspenseWrapper> },
+      { path: 'folder-sorting', element: <SuspenseWrapper><FolderSortingPage /></SuspenseWrapper> },
+      { path: 'routing', element: <SuspenseWrapper><RoutingPage /></SuspenseWrapper> },
+      { path: 'communication', element: <SuspenseWrapper><CommunicationPage /></SuspenseWrapper> },
       { path: 'rules', element: <SuspenseWrapper><RulesPage /></SuspenseWrapper> },
       { path: 'rules/new', element: <SuspenseWrapper><RuleBuilderPage /></SuspenseWrapper> },
       { path: 'rules/:id', element: <SuspenseWrapper><RuleBuilderPage /></SuspenseWrapper> },

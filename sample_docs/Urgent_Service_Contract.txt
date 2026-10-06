@@ -1,0 +1,23 @@
+=======================================================
+MASTER SERVICE AGREEMENT & CONTRACT
+=======================================================
+Document Type: Master Service Agreement
+Contract ID: MSA-2026-994
+Priority Level: Urgent Expedited
+Effective Date: 2026-10-06
+
+Parties:
+- Provider: TechNova Global Systems LLC
+- Client: Apex Logistics Group
+
+Scope of Engagement:
+The Provider agrees to deliver enterprise automation, workflow routing,
+and intelligent document processing services as outlined in Schedule A.
+
+Compliance & Verification:
+- Mandatory Regulatory Compliance: Confirmed
+- Legal Representative Review: Required
+- Authorized Execution Signature: Elena Rostova, VP Operations
+
+Contact Email: legal@apexlogistics.com
+=======================================================

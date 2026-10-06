@@ -14,9 +14,7 @@ import java.util.List;
 public class E2EDocsApplication {
 
     public static void main(String[] args) {
-        System.setProperty("java.net.preferIPv6Addresses", "true");
-        System.setProperty("java.net.preferIPv4Addresses", "false");
-        System.setProperty("java.net.preferIPv4Stack", "false");
+        System.setProperty("java.net.preferIPv4Stack", "true");
         loadDotEnv();
         SpringApplication.run(E2EDocsApplication.class, args);
     }

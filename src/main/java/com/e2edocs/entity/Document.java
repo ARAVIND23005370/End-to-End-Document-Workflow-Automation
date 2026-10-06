@@ -86,6 +86,12 @@ public class Document {
     @Column(name = "storage_path")
     private String storagePath;
 
+    @Column(name = "decision_reason", columnDefinition = "TEXT")
+    private String decisionReason;
+
+    @Column(name = "missing_fields", columnDefinition = "TEXT")
+    private String missingFields;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -314,6 +320,22 @@ public class Document {
 
     public void setStoragePath(String storagePath) {
         this.storagePath = storagePath;
+    }
+
+    public String getDecisionReason() {
+        return decisionReason;
+    }
+
+    public void setDecisionReason(String decisionReason) {
+        this.decisionReason = decisionReason;
+    }
+
+    public String getMissingFields() {
+        return missingFields;
+    }
+
+    public void setMissingFields(String missingFields) {
+        this.missingFields = missingFields;
     }
 
     public Instant getCreatedAt() {

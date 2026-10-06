@@ -141,22 +141,64 @@ public class DataSeeder implements CommandLineRunner {
 
         userRepository.saveAll(Arrays.asList(adminUser, user2, user3, user4, user5));
 
-        // 6. Rules
-        RuleInputDto ruleInput = new RuleInputDto();
-        ruleInput.setName("External Email Ingestion Routing");
-        ruleInput.setDescription("Matches incoming emails from partner domains and sets priority and assignment.");
-        ruleInput.setStatus(RuleStatus.ACTIVE);
-        ruleInput.setEvaluationOrder(10);
+        // 6. Section-Isolated Starter Rules
+        // 6a. Decision Rule (Verifies Tax ID / Verification Code -> APPROVE)
+        RuleInputDto decisionRule = new RuleInputDto();
+        decisionRule.setName("Verified Document Approval Rule");
+        decisionRule.setDescription("Auto-approves documents containing verified Tax ID or verification code.");
+        decisionRule.setStatus(RuleStatus.ACTIVE);
+        decisionRule.setRuleType(RuleType.DECISION);
+        decisionRule.setEvaluationOrder(1);
+        RuleConditionGroupDto condGroup1 = new RuleConditionGroupDto();
+        condGroup1.setLogic(ConditionLogic.OR);
+        condGroup1.getConditions().add(new RuleConditionDto("c-001", "extracted.text", ConditionOperator.CONTAINS, "Tax ID"));
+        condGroup1.getConditions().add(new RuleConditionDto("c-002", "extracted.text", ConditionOperator.CONTAINS, "VERIFIED"));
+        decisionRule.getConditionGroups().add(condGroup1);
+        decisionRule.getActions().add(new RuleActionDto("act-001", ActionType.SET_DECISION, "approved", null));
+        ruleEngineService.createRule(orgId, decisionRule, "System Administrator");
 
-        RuleConditionGroupDto condGroup = new RuleConditionGroupDto();
-        condGroup.setLogic(ConditionLogic.AND);
-        condGroup.getConditions().add(new RuleConditionDto("c-001", "metadata.source", ConditionOperator.EQUALS, "email"));
-        condGroup.getConditions().add(new RuleConditionDto("c-002", "sender.email", ConditionOperator.ENDS_WITH, "@example.org"));
-        ruleInput.getConditionGroups().add(condGroup);
+        // 6b. Folder Rule (Auto-classify Invoices and Contracts)
+        RuleInputDto folderRule = new RuleInputDto();
+        folderRule.setName("Auto-Classify Commercial Invoices");
+        folderRule.setDescription("Classifies billing documents into the Invoices virtual category.");
+        folderRule.setStatus(RuleStatus.ACTIVE);
+        folderRule.setRuleType(RuleType.FOLDER);
+        folderRule.setEvaluationOrder(1);
+        RuleConditionGroupDto condGroupFolder = new RuleConditionGroupDto();
+        condGroupFolder.setLogic(ConditionLogic.OR);
+        condGroupFolder.getConditions().add(new RuleConditionDto("c-f01", "extracted.text", ConditionOperator.CONTAINS, "INVOICE"));
+        folderRule.getConditionGroups().add(condGroupFolder);
+        folderRule.getActions().add(new RuleActionDto("act-f01", ActionType.ASSIGN_FOLDER, "Invoices", null));
+        ruleEngineService.createRule(orgId, folderRule, "System Administrator");
 
-        ruleInput.getActions().add(new RuleActionDto("act-001", ActionType.SET_PRIORITY, "high", null));
-        ruleInput.getActions().add(new RuleActionDto("act-002", ActionType.ASSIGN_USER, "James Okafor", null));
-        ruleEngineService.createRule(orgId, ruleInput, "System Administrator");
+        // 6c. Sorting Rule (Escalate Urgent Documents)
+        RuleInputDto sortingRule = new RuleInputDto();
+        sortingRule.setName("High Priority Urgent Sorting");
+        sortingRule.setDescription("Sets Critical sorting priority for urgent keywords.");
+        sortingRule.setStatus(RuleStatus.ACTIVE);
+        sortingRule.setRuleType(RuleType.SORTING);
+        sortingRule.setEvaluationOrder(1);
+        RuleConditionGroupDto condGroup3 = new RuleConditionGroupDto();
+        condGroup3.setLogic(ConditionLogic.OR);
+        condGroup3.getConditions().add(new RuleConditionDto("c-004", "extracted.text", ConditionOperator.CONTAINS, "Urgent"));
+        condGroup3.getConditions().add(new RuleConditionDto("c-005", "extracted.text", ConditionOperator.CONTAINS, "URGENT"));
+        sortingRule.getConditionGroups().add(condGroup3);
+        sortingRule.getActions().add(new RuleActionDto("act-003", ActionType.SET_PRIORITY, "critical", null));
+        ruleEngineService.createRule(orgId, sortingRule, "System Administrator");
+
+        // 6d. Routing Rule (Route to Specialist / Operations)
+        RuleInputDto routingRule = new RuleInputDto();
+        routingRule.setName("Accounts Billing Assignment");
+        routingRule.setDescription("Routes invoice documents to Accounts team.");
+        routingRule.setStatus(RuleStatus.ACTIVE);
+        routingRule.setRuleType(RuleType.ROUTING);
+        routingRule.setEvaluationOrder(1);
+        RuleConditionGroupDto condGroup2 = new RuleConditionGroupDto();
+        condGroup2.setLogic(ConditionLogic.AND);
+        condGroup2.getConditions().add(new RuleConditionDto("c-003", "extracted.text", ConditionOperator.CONTAINS, "INVOICE"));
+        routingRule.getConditionGroups().add(condGroup2);
+        routingRule.getActions().add(new RuleActionDto("act-002", ActionType.ASSIGN_DEPARTMENT, "Finance & Accounts", null));
+        ruleEngineService.createRule(orgId, routingRule, "System Administrator");
 
         // 7. Workflows
         Workflow wf = new Workflow("wf-001", orgId, "Standard Document Intake",

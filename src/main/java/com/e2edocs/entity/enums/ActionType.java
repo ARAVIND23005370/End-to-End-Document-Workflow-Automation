@@ -6,6 +6,10 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum ActionType {
     SET_PRIORITY("set_priority"),
     ASSIGN_USER("assign_user"),
+    ASSIGN_DEPARTMENT("assign_department"),
+    ASSIGN_TEAM("assign_team"),
+    ASSIGN_QUEUE("assign_queue"),
+    ASSIGN_FOLDER("assign_folder"),
     START_WORKFLOW("start_workflow"),
     SEND_EMAIL("send_email"),
     SEND_NOTIFICATION("send_notification"),

@@ -56,10 +56,21 @@ public class RuleEngineService {
     }
 
     @Transactional(readOnly = true)
-    public List<RuleResponse> getAllRules(String organizationId) {
-        return ruleRepository.findByOrganizationIdOrderByEvaluationOrderAsc(organizationId).stream()
+    public List<RuleResponse> getAllRules(String organizationId, RuleType ruleType) {
+        List<Rule> rules;
+        if (ruleType != null) {
+            rules = ruleRepository.findByOrganizationIdAndRuleTypeOrderByEvaluationOrderAsc(organizationId, ruleType);
+        } else {
+            rules = ruleRepository.findByOrganizationIdOrderByEvaluationOrderAsc(organizationId);
+        }
+        return rules.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<RuleResponse> getAllRules(String organizationId) {
+        return getAllRules(organizationId, null);
     }
 
     @Transactional(readOnly = true)
@@ -72,12 +83,14 @@ public class RuleEngineService {
     @Transactional
     public RuleResponse createRule(String organizationId, RuleInputDto input, String createdBy) {
         String ruleId = "r-" + UUID.randomUUID().toString().substring(0, 8);
+        RuleType ruleType = input.getRuleType() != null ? input.getRuleType() : RuleType.DECISION;
         Rule rule = new Rule(
                 ruleId,
                 organizationId,
                 input.getName(),
                 input.getDescription(),
                 input.getStatus() != null ? input.getStatus() : RuleStatus.ACTIVE,
+                ruleType,
                 input.getEvaluationOrder() != null ? input.getEvaluationOrder() : 1
         );
         rule.setCreatedBy(createdBy);
@@ -87,7 +100,7 @@ public class RuleEngineService {
         Rule saved = ruleRepository.save(rule);
 
         auditService.log(organizationId, "SYSTEM", createdBy, AuditAction.CREATED,
-                "Rule", saved.getId(), AuditStatus.SUCCESS, "Created rule: " + saved.getName(), "SYSTEM");
+                "Rule", saved.getId(), AuditStatus.SUCCESS, "Created " + saved.getRuleType().getValue() + " rule: " + saved.getName(), "SYSTEM");
 
         return mapToResponse(saved);
     }
@@ -102,6 +115,9 @@ public class RuleEngineService {
         if (input.getStatus() != null) {
             rule.setStatus(input.getStatus());
         }
+        if (input.getRuleType() != null) {
+            rule.setRuleType(input.getRuleType());
+        }
         if (input.getEvaluationOrder() != null) {
             rule.setEvaluationOrder(input.getEvaluationOrder());
         }
@@ -114,7 +130,7 @@ public class RuleEngineService {
         Rule saved = ruleRepository.save(rule);
 
         auditService.log(saved.getOrganizationId(), "SYSTEM", updatedBy, AuditAction.UPDATED,
-                "Rule", saved.getId(), AuditStatus.SUCCESS, "Updated rule: " + saved.getName(), "SYSTEM");
+                "Rule", saved.getId(), AuditStatus.SUCCESS, "Updated " + saved.getRuleType().getValue() + " rule: " + saved.getName(), "SYSTEM");
 
         return mapToResponse(saved);
     }
@@ -132,31 +148,409 @@ public class RuleEngineService {
                 "Rule", id, AuditStatus.SUCCESS, "Deleted rule: " + name, "SYSTEM");
     }
 
+    /**
+     * Complete Section-Wise Document Processing Pipeline:
+     * 1. Decision Rules -> Determine APPROVE / REJECT / MANUAL REVIEW (track missing fields/failures)
+     * 2. Folder Rules -> Determine classification & virtual folder / category assignment
+     * 3. Sorting Rules -> Determine document sorting priority inside folder/queue (CRITICAL, HIGH, MEDIUM, LOW)
+     * 4. Routing Rules -> Assign to designated User, Team, Department, or Queue
+     * 5. Communication Rules -> Dispatch notifications/emails with dynamic template variables
+     */
     @Transactional
     public void evaluateDocument(Document document) {
+        String orgId = document.getOrganizationId();
         List<Rule> activeRules = ruleRepository.findByOrganizationIdAndStatusOrderByEvaluationOrderAsc(
-                document.getOrganizationId(), RuleStatus.ACTIVE);
+                orgId, RuleStatus.ACTIVE);
 
         int totalMatches = 0;
+        Set<String> matchedRuleIds = new HashSet<>();
+        List<String> allMatchedConditions = new ArrayList<>();
+        List<String> allFailedConditions = new ArrayList<>();
+        Set<String> missingFields = new LinkedHashSet<>();
 
-        for (Rule rule : activeRules) {
-            boolean matched = evaluateRuleOnDocument(rule, document);
+        // Group rules by type / action capability
+        List<Rule> decisionRules = activeRules.stream()
+                .filter(r -> r.getRuleType() == RuleType.DECISION || hasActionType(r, ActionType.SET_DECISION))
+                .collect(Collectors.toList());
+
+        List<Rule> folderRules = activeRules.stream()
+                .filter(r -> r.getRuleType() == RuleType.FOLDER || hasActionType(r, ActionType.ASSIGN_FOLDER))
+                .collect(Collectors.toList());
+
+        List<Rule> sortingRules = activeRules.stream()
+                .filter(r -> r.getRuleType() == RuleType.SORTING || hasActionType(r, ActionType.SET_PRIORITY))
+                .collect(Collectors.toList());
+
+        List<Rule> routingRules = activeRules.stream()
+                .filter(r -> r.getRuleType() == RuleType.ROUTING || hasActionType(r, ActionType.ASSIGN_USER) || hasActionType(r, ActionType.ASSIGN_DEPARTMENT) || hasActionType(r, ActionType.START_WORKFLOW) || hasActionType(r, ActionType.FORWARD_DOCUMENT))
+                .collect(Collectors.toList());
+
+        List<Rule> commRules = activeRules.stream()
+                .filter(r -> r.getRuleType() == RuleType.COMMUNICATION || hasActionType(r, ActionType.SEND_EMAIL) || hasActionType(r, ActionType.SEND_NOTIFICATION))
+                .collect(Collectors.toList());
+
+        // 1. Evaluate DECISION Rules
+        for (Rule rule : decisionRules) {
+            List<String> ruleMatched = new ArrayList<>();
+            List<String> ruleFailed = new ArrayList<>();
+            List<String> ruleMissing = new ArrayList<>();
+
+            boolean matched = evaluateRuleDetailed(rule, document, ruleMatched, ruleFailed, ruleMissing);
             if (matched) {
+                if (matchedRuleIds.add(rule.getId())) {
+                    totalMatches++;
+                    markRuleTriggered(rule);
+                }
+                executeDecisionActions(rule, document, ruleMatched);
+                executeTagActions(rule, document);
+                allMatchedConditions.addAll(ruleMatched);
+                if (hasActionType(rule, ActionType.SET_DECISION)) {
+                    break;
+                }
+            } else {
+                allFailedConditions.addAll(ruleFailed);
+                missingFields.addAll(ruleMissing);
+            }
+        }
+
+        if (!missingFields.isEmpty()) {
+            document.setMissingFields(String.join(", ", missingFields));
+        }
+
+        // 2. Evaluate FOLDER Rules
+        for (Rule rule : folderRules) {
+            if (evaluateRuleOnDocument(rule, document)) {
+                if (matchedRuleIds.add(rule.getId())) {
+                    totalMatches++;
+                    markRuleTriggered(rule);
+                }
+                executeFolderActions(rule, document);
+                executeTagActions(rule, document);
+                if (hasActionType(rule, ActionType.ASSIGN_FOLDER)) {
+                    break;
+                }
+            }
+        }
+
+        // 3. Evaluate SORTING Rules (Document Sorting Priority: CRITICAL, HIGH, MEDIUM, LOW)
+        for (Rule rule : sortingRules) {
+            if (evaluateRuleOnDocument(rule, document)) {
+                if (matchedRuleIds.add(rule.getId())) {
+                    totalMatches++;
+                    markRuleTriggered(rule);
+                }
+                executeSortingActions(rule, document);
+                executeTagActions(rule, document);
+            }
+        }
+
+        // 4. Evaluate ROUTING Rules
+        for (Rule rule : routingRules) {
+            if (evaluateRuleOnDocument(rule, document)) {
+                if (matchedRuleIds.add(rule.getId())) {
+                    totalMatches++;
+                    markRuleTriggered(rule);
+                }
+                executeRoutingActions(rule, document);
+                executeTagActions(rule, document);
+            }
+        }
+
+        // 5. Evaluate COMMUNICATION Rules
+        for (Rule rule : commRules) {
+            if (evaluateRuleOnDocument(rule, document)) {
+                if (matchedRuleIds.add(rule.getId())) {
+                    totalMatches++;
+                    markRuleTriggered(rule);
+                }
+                executeCommunicationActions(rule, document, allMatchedConditions, allFailedConditions, missingFields);
+                executeTagActions(rule, document);
+            }
+        }
+
+        // 6. Generic rule actions execution (e.g. general tag rules or legacy unpartitioned rules)
+        for (Rule rule : activeRules) {
+            if (!matchedRuleIds.contains(rule.getId()) && evaluateRuleOnDocument(rule, document)) {
+                matchedRuleIds.add(rule.getId());
                 totalMatches++;
-                rule.setMatchCount(rule.getMatchCount() != null ? rule.getMatchCount() + 1 : 1);
-                rule.setLastTriggered(Instant.now());
-                ruleRepository.save(rule);
-
-                executeActions(rule, document);
-
-                auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ROUTED,
-                        "Rule", rule.getId(), AuditStatus.SUCCESS,
-                        "Rule '" + rule.getName() + "' matched on document " + document.getName(), "SYSTEM");
+                markRuleTriggered(rule);
+                executeTagActions(rule, document);
             }
         }
 
         document.setRuleMatches(totalMatches);
         documentRepository.save(document);
+    }
+
+    private boolean hasActionType(Rule rule, ActionType type) {
+        if (rule == null || rule.getActions() == null) return false;
+        return rule.getActions().stream().anyMatch(a -> a.getType() == type);
+    }
+
+    private void markRuleTriggered(Rule rule) {
+        rule.setMatchCount(rule.getMatchCount() != null ? rule.getMatchCount() + 1 : 1);
+        rule.setLastTriggered(Instant.now());
+        ruleRepository.save(rule);
+    }
+
+    private void executeTagActions(Rule rule, Document document) {
+        if (rule == null || rule.getActions() == null) return;
+        for (RuleAction action : rule.getActions()) {
+            if (action.getType() == ActionType.ADD_TAG && action.getValue() != null && !action.getValue().isBlank()) {
+                String tag = action.getValue().trim();
+                String currentTags = document.getTags() != null ? document.getTags() : "";
+                List<String> tagList = Arrays.stream(currentTags.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(Collectors.toList());
+                if (!tagList.contains(tag)) {
+                    tagList.add(tag);
+                    document.setTags(String.join(",", tagList));
+                    auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.UPDATED,
+                            "Document", document.getId(), AuditStatus.SUCCESS,
+                            "Added tag '" + tag + "' by rule '" + rule.getName() + "'", "SYSTEM");
+                }
+            }
+        }
+    }
+
+    private void executeDecisionActions(Rule rule, Document document, List<String> matchedConditions) {
+        for (RuleAction action : rule.getActions()) {
+            if (action.getType() == ActionType.SET_DECISION) {
+                try {
+                    DocumentStatus status = DocumentStatus.fromValue(action.getValue());
+                    if (status != null) {
+                        document.setStatus(status);
+                        String reason = "Decision set to " + status.getValue() + " by rule '" + rule.getName() + "'";
+                        document.setDecisionReason(reason);
+
+                        AuditAction auditAct = status == DocumentStatus.APPROVED ? AuditAction.APPROVED :
+                                (status == DocumentStatus.REJECTED ? AuditAction.REJECTED : AuditAction.REVIEWED);
+
+                        auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", auditAct,
+                                "Document", document.getId(), AuditStatus.SUCCESS, reason, "SYSTEM");
+                    }
+                } catch (Exception e) {
+                    logger.warn("Invalid decision value in rule action: {}", action.getValue());
+                }
+            }
+        }
+    }
+
+    private void executeFolderActions(Rule rule, Document document) {
+        for (RuleAction action : rule.getActions()) {
+            if (action.getType() == ActionType.ASSIGN_FOLDER) {
+                String folderName = action.getValue();
+                if (folderName != null && !folderName.isBlank()) {
+                    document.setType(folderName.trim());
+                    Map<String, Object> meta = parseMetadata(document.getMetadataJson());
+                    meta.put("folder", folderName.trim());
+                    meta.put("category", folderName.trim());
+                    try {
+                        document.setMetadataJson(objectMapper.writeValueAsString(meta));
+                    } catch (Exception ignored) {}
+
+                    auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.UPDATED,
+                            "Document", document.getId(), AuditStatus.SUCCESS,
+                            "Classified into folder/category: " + folderName + " by rule '" + rule.getName() + "'", "SYSTEM");
+                }
+            }
+        }
+    }
+
+    private void executeSortingActions(Rule rule, Document document) {
+        for (RuleAction action : rule.getActions()) {
+            if (action.getType() == ActionType.SET_PRIORITY) {
+                try {
+                    Priority priority = Priority.fromValue(action.getValue());
+                    if (priority != null) {
+                        document.setPriority(priority);
+                        auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.UPDATED,
+                                "Document", document.getId(), AuditStatus.SUCCESS,
+                                "Set priority to " + priority.getValue() + " by rule '" + rule.getName() + "'", "SYSTEM");
+                    }
+                } catch (Exception e) {
+                    logger.warn("Invalid priority value in sorting rule action: {}", action.getValue());
+                }
+            }
+        }
+    }
+
+    private void executeRoutingActions(Rule rule, Document document) {
+        for (RuleAction action : rule.getActions()) {
+            if (action.getType() == null) continue;
+            switch (action.getType()) {
+                case ASSIGN_USER:
+                    assignUserToDocument(action.getValue(), document, rule);
+                    break;
+                case ASSIGN_DEPARTMENT:
+                    document.setDepartment(action.getValue());
+                    auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ASSIGNED,
+                            "Document", document.getId(), AuditStatus.SUCCESS,
+                            "Assigned department to " + action.getValue() + " by rule '" + rule.getName() + "'", "SYSTEM");
+                    break;
+                case ASSIGN_TEAM:
+                case ASSIGN_QUEUE:
+                    Map<String, Object> meta = parseMetadata(document.getMetadataJson());
+                    meta.put(action.getType() == ActionType.ASSIGN_TEAM ? "assigned_team" : "assigned_queue", action.getValue());
+                    try {
+                        document.setMetadataJson(objectMapper.writeValueAsString(meta));
+                    } catch (Exception ignored) {}
+                    auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ROUTED,
+                            "Document", document.getId(), AuditStatus.SUCCESS,
+                            "Routed document to " + action.getValue() + " by rule '" + rule.getName() + "'", "SYSTEM");
+                    break;
+                case START_WORKFLOW:
+                    startWorkflowForDocument(action.getValue(), document, rule);
+                    break;
+                case FORWARD_DOCUMENT:
+                    auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ROUTED,
+                            "Document", document.getId(), AuditStatus.SUCCESS,
+                            "Forwarded document to: " + action.getValue() + " by rule '" + rule.getName() + "'", "SYSTEM");
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private void executeCommunicationActions(
+            Rule rule,
+            Document document,
+            List<String> matchedConds,
+            List<String> failedConds,
+            Set<String> missingFields) {
+
+        for (RuleAction action : rule.getActions()) {
+            if (action.getType() == ActionType.SEND_EMAIL) {
+                handleSendEmailWithDynamicVariables(action, document, rule, matchedConds, failedConds, missingFields);
+            } else if (action.getType() == ActionType.SEND_NOTIFICATION) {
+                String message = renderTemplate(action.getValue() != null ? action.getValue() : "Document processed",
+                        buildExtendedTemplateContext(document, matchedConds, failedConds, missingFields));
+                notificationService.createNotification(
+                        document.getOrganizationId(),
+                        document.getAssignedToId(),
+                        "Rule Notification: " + rule.getName(),
+                        message,
+                        NotificationType.INFO,
+                        document.getId(),
+                        document.getName(),
+                        document.getPriority()
+                );
+            }
+        }
+    }
+
+    private void assignUserToDocument(String userVal, Document document, Rule rule) {
+        if (userVal == null || userVal.isBlank()) return;
+        Optional<User> userOpt = userRepository.findById(userVal);
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByEmailIgnoreCase(userVal);
+        }
+        if (userOpt.isPresent()) {
+            User targetUser = userOpt.get();
+            if (targetUser.getOrganizationId().equals(document.getOrganizationId())) {
+                document.setAssignedTo(targetUser.getName());
+                document.setAssignedToId(targetUser.getId());
+                auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ASSIGNED,
+                        "Document", document.getId(), AuditStatus.SUCCESS,
+                        "Assigned document to " + targetUser.getName() + " by rule '" + rule.getName() + "'", "SYSTEM");
+            }
+        } else {
+            document.setAssignedTo(userVal);
+            auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ASSIGNED,
+                    "Document", document.getId(), AuditStatus.SUCCESS,
+                    "Assigned document to " + userVal + " by rule '" + rule.getName() + "'", "SYSTEM");
+        }
+    }
+
+    private void startWorkflowForDocument(String wfVal, Document document, Rule rule) {
+        if (wfVal == null || wfVal.isBlank()) return;
+        Optional<Workflow> wfOpt = workflowRepository.findById(wfVal);
+        if (wfOpt.isEmpty()) {
+            wfOpt = workflowRepository.findByOrganizationId(document.getOrganizationId()).stream()
+                    .filter(w -> w.getName().equalsIgnoreCase(wfVal))
+                    .findFirst();
+        }
+        if (wfOpt.isPresent()) {
+            Workflow wf = wfOpt.get();
+            if (wf.getOrganizationId().equals(document.getOrganizationId()) && wf.getStatus() == WorkflowStatus.ACTIVE) {
+                document.setWorkflowId(wf.getId());
+                wf.setDocumentsProcessed((wf.getDocumentsProcessed() != null ? wf.getDocumentsProcessed() : 0) + 1);
+                workflowRepository.save(wf);
+                auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.UPDATED,
+                        "Workflow", wf.getId(), AuditStatus.SUCCESS,
+                        "Started workflow '" + wf.getName() + "' for document " + document.getName(), "SYSTEM");
+            }
+        }
+    }
+
+    private void handleSendEmailWithDynamicVariables(
+            RuleAction action,
+            Document document,
+            Rule rule,
+            List<String> matchedConds,
+            List<String> failedConds,
+            Set<String> missingFields) {
+
+        if (action.getEmailConfigJson() == null || action.getEmailConfigJson().isBlank()) return;
+        try {
+            EmailConfigDto emailConfig = objectMapper.readValue(action.getEmailConfigJson(), EmailConfigDto.class);
+            String recipient = resolveRecipient(emailConfig, document);
+            if (recipient != null && !recipient.isBlank()) {
+                Map<String, Object> templateCtx = buildExtendedTemplateContext(document, matchedConds, failedConds, missingFields);
+                String renderedSubject = renderTemplate(emailConfig.getSubject(), templateCtx);
+                String renderedMessage = renderTemplate(emailConfig.getMessage(), templateCtx);
+
+                emailService.sendEmail(recipient, renderedSubject, renderedMessage, templateCtx);
+
+                auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.CREATED,
+                        "Email", document.getId(), AuditStatus.SUCCESS,
+                        "Sent automated email to " + recipient + " by rule '" + rule.getName() + "'", "SYSTEM");
+            }
+        } catch (JsonProcessingException e) {
+            logger.warn("Failed to parse EmailConfigJson for rule action: {}", e.getMessage());
+        }
+    }
+
+    public Map<String, Object> buildExtendedTemplateContext(
+            Document doc,
+            List<String> matchedConds,
+            List<String> failedConds,
+            Set<String> missingFields) {
+
+        Map<String, Object> ctx = buildDocumentContext(doc);
+        ctx.put("document.id", doc.getId());
+        ctx.put("document_id", doc.getId());
+        ctx.put("document.name", doc.getName());
+        ctx.put("document_name", doc.getName());
+        ctx.put("decision", doc.getStatus() != null ? doc.getStatus().getValue().toUpperCase() : "PROCESSING");
+        ctx.put("document.status", doc.getStatus() != null ? doc.getStatus().getValue() : "");
+        ctx.put("priority", doc.getPriority() != null ? doc.getPriority().getValue().toUpperCase() : "MEDIUM");
+        ctx.put("category", doc.getType() != null ? doc.getType() : "General");
+        ctx.put("folder", doc.getType() != null ? doc.getType() : "General");
+        ctx.put("department", doc.getDepartment() != null ? doc.getDepartment() : "Unassigned");
+        ctx.put("assigned_user", doc.getAssignedTo() != null ? doc.getAssignedTo() : "Unassigned");
+        ctx.put("organization", doc.getOrganizationId());
+        ctx.put("missing_fields", !missingFields.isEmpty() ? String.join(", ", missingFields) : "None");
+        ctx.put("failed_conditions", !failedConds.isEmpty() ? String.join("; ", failedConds) : "None");
+        ctx.put("review_reason", doc.getDecisionReason() != null ? doc.getDecisionReason() : "Rule evaluation criteria");
+
+        return ctx;
+    }
+
+    private String renderTemplate(String template, Map<String, Object> context) {
+        if (template == null || template.isBlank() || context == null) return template;
+        String result = template;
+        for (Map.Entry<String, Object> entry : context.entrySet()) {
+            if (entry.getValue() != null) {
+                String placeholder1 = "{{" + entry.getKey() + "}}";
+                String placeholder2 = "{" + entry.getKey() + "}";
+                result = result.replace(placeholder1, String.valueOf(entry.getValue()));
+                result = result.replace(placeholder2, String.valueOf(entry.getValue()));
+            }
+        }
+        return result;
     }
 
     public RuleTestResponse testRule(RuleTestRequest request) {
@@ -195,6 +589,65 @@ public class RuleEngineService {
         }
 
         return response;
+    }
+
+    private boolean evaluateRuleDetailed(
+            Rule rule,
+            Document document,
+            List<String> matchedConds,
+            List<String> failedConds,
+            List<String> missingFields) {
+
+        Map<String, Object> context = buildDocumentContext(document);
+        List<RuleConditionGroup> groups = rule.getConditionGroups();
+        if (groups == null || groups.isEmpty()) {
+            return true;
+        }
+
+        boolean matchedAnyGroup = false;
+
+        for (RuleConditionGroup group : groups) {
+            List<RuleCondition> conditions = group.getConditions();
+            if (conditions == null || conditions.isEmpty()) {
+                matchedAnyGroup = true;
+                continue;
+            }
+
+            boolean isAnd = group.getLogic() == ConditionLogic.AND;
+            boolean groupMatched = isAnd;
+            boolean hasAtLeastOneMatch = false;
+
+            for (RuleCondition condition : conditions) {
+                boolean condRes = evaluateCondition(condition.getField(), condition.getOperator(), condition.getValue(), context);
+                String label = condition.getField() + " " + (condition.getOperator() != null ? condition.getOperator().getValue() : "") + " " + condition.getValue();
+
+                if (condRes) {
+                    matchedConds.add(label);
+                    hasAtLeastOneMatch = true;
+                } else {
+                    failedConds.add(label);
+                    Object actual = resolveFieldValue(condition.getField(), context);
+                    if (actual == null || String.valueOf(actual).isBlank()) {
+                        missingFields.add(condition.getField());
+                    } else if (condition.getOperator() == ConditionOperator.CONTAINS) {
+                        missingFields.add("Required text: '" + condition.getValue() + "' in " + condition.getField());
+                    }
+                    if (isAnd) {
+                        groupMatched = false;
+                    }
+                }
+            }
+
+            if (!isAnd) {
+                groupMatched = hasAtLeastOneMatch;
+            }
+
+            if (groupMatched) {
+                matchedAnyGroup = true;
+            }
+        }
+
+        return matchedAnyGroup;
     }
 
     private boolean evaluateRuleOnDocument(Rule rule, Document document) {
@@ -302,6 +755,12 @@ public class RuleEngineService {
             String extKey = field.substring("extracted.".length());
             if ("text".equalsIgnoreCase(extKey)) return context.get("extracted.text");
             if ("category".equalsIgnoreCase(extKey)) return context.get("extracted.category");
+            if ("title".equalsIgnoreCase(extKey)) return context.get("document.name");
+        }
+
+        if (field.startsWith("ocr.")) {
+            String ocrKey = field.substring("ocr.".length());
+            if ("confidence".equalsIgnoreCase(ocrKey)) return context.get("ocr.confidence");
         }
 
         return null;
@@ -365,161 +824,6 @@ public class RuleEngineService {
         }
     }
 
-    private void executeActions(Rule rule, Document document) {
-        for (RuleAction action : rule.getActions()) {
-            if (action.getType() == null) continue;
-
-            switch (action.getType()) {
-                case SET_PRIORITY:
-                    try {
-                        Priority priority = Priority.fromValue(action.getValue());
-                        if (priority != null) {
-                            document.setPriority(priority);
-                            auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.UPDATED,
-                                    "Document", document.getId(), AuditStatus.SUCCESS,
-                                    "Set priority to " + priority.getValue() + " by rule '" + rule.getName() + "'", "SYSTEM");
-                        }
-                    } catch (Exception e) {
-                        logger.warn("Invalid priority value in rule action: {}", action.getValue());
-                    }
-                    break;
-                case ASSIGN_USER:
-                    String userVal = action.getValue();
-                    if (userVal != null && !userVal.isBlank()) {
-                        Optional<User> userOpt = userRepository.findById(userVal);
-                        if (userOpt.isEmpty()) {
-                            userOpt = userRepository.findByEmailIgnoreCase(userVal);
-                        }
-                        if (userOpt.isPresent()) {
-                            User targetUser = userOpt.get();
-                            if (targetUser.getOrganizationId().equals(document.getOrganizationId())) {
-                                document.setAssignedTo(targetUser.getName());
-                                document.setAssignedToId(targetUser.getId());
-                                auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ASSIGNED,
-                                        "Document", document.getId(), AuditStatus.SUCCESS,
-                                        "Assigned document to " + targetUser.getName() + " by rule '" + rule.getName() + "'", "SYSTEM");
-                            } else {
-                                logger.warn("Cross-organization assignment attempt blocked for user {} in org {} on doc org {}",
-                                        targetUser.getId(), targetUser.getOrganizationId(), document.getOrganizationId());
-                            }
-                        } else {
-                            document.setAssignedTo(userVal);
-                            auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ASSIGNED,
-                                    "Document", document.getId(), AuditStatus.SUCCESS,
-                                    "Assigned document to " + userVal + " by rule '" + rule.getName() + "'", "SYSTEM");
-                        }
-                    }
-                    break;
-                case START_WORKFLOW:
-                    String wfVal = action.getValue();
-                    if (wfVal != null && !wfVal.isBlank()) {
-                        Optional<Workflow> wfOpt = workflowRepository.findById(wfVal);
-                        if (wfOpt.isEmpty()) {
-                            wfOpt = workflowRepository.findByOrganizationId(document.getOrganizationId()).stream()
-                                    .filter(w -> w.getName().equalsIgnoreCase(wfVal))
-                                    .findFirst();
-                        }
-                        if (wfOpt.isPresent()) {
-                            Workflow wf = wfOpt.get();
-                            if (wf.getOrganizationId().equals(document.getOrganizationId()) && wf.getStatus() == WorkflowStatus.ACTIVE) {
-                                document.setWorkflowId(wf.getId());
-                                wf.setDocumentsProcessed((wf.getDocumentsProcessed() != null ? wf.getDocumentsProcessed() : 0) + 1);
-                                workflowRepository.save(wf);
-                                auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.UPDATED,
-                                        "Workflow", wf.getId(), AuditStatus.SUCCESS,
-                                        "Started workflow '" + wf.getName() + "' for document " + document.getName(), "SYSTEM");
-                            } else {
-                                logger.warn("Workflow {} is inactive or in different organization", wfVal);
-                            }
-                        } else {
-                            logger.warn("Workflow not found for action value: {}", wfVal);
-                        }
-                    }
-                    break;
-                case SET_DECISION:
-                    try {
-                        DocumentStatus status = DocumentStatus.fromValue(action.getValue());
-                        if (status != null) {
-                            document.setStatus(status);
-                            AuditAction auditAct = status == DocumentStatus.APPROVED ? AuditAction.APPROVED :
-                                    (status == DocumentStatus.REJECTED ? AuditAction.REJECTED : AuditAction.UPDATED);
-                            auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", auditAct,
-                                    "Document", document.getId(), AuditStatus.SUCCESS,
-                                    "Set decision/status to " + status.getValue() + " by rule '" + rule.getName() + "'", "SYSTEM");
-                        }
-                    } catch (Exception e) {
-                        logger.warn("Invalid decision/status value in rule action: {}", action.getValue());
-                    }
-                    break;
-                case ADD_TAG:
-                    if (action.getValue() != null && !action.getValue().isBlank()) {
-                        String tag = action.getValue().trim();
-                        String currentTags = document.getTags() != null ? document.getTags() : "";
-                        List<String> tagList = Arrays.stream(currentTags.split(","))
-                                .map(String::trim)
-                                .filter(s -> !s.isEmpty())
-                                .collect(Collectors.toList());
-                        if (!tagList.contains(tag)) {
-                            tagList.add(tag);
-                            document.setTags(String.join(",", tagList));
-                            auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.UPDATED,
-                                    "Document", document.getId(), AuditStatus.SUCCESS,
-                                    "Added tag '" + tag + "' by rule '" + rule.getName() + "'", "SYSTEM");
-                        }
-                    }
-                    break;
-                case SEND_NOTIFICATION:
-                    notificationService.createNotification(
-                            document.getOrganizationId(),
-                            document.getAssignedToId(),
-                            "Rule Action: " + rule.getName(),
-                            action.getValue() != null ? action.getValue() : "Action applied to document " + document.getName(),
-                            NotificationType.INFO,
-                            document.getId(),
-                            document.getName(),
-                            document.getPriority()
-                    );
-                    auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.CREATED,
-                            "Notification", document.getId(), AuditStatus.SUCCESS,
-                            "Dispatched notification for rule '" + rule.getName() + "'", "SYSTEM");
-                    break;
-                case SEND_EMAIL:
-                    handleSendEmailAction(action, document, rule);
-                    break;
-                case FORWARD_DOCUMENT:
-                    logger.info("Forwarding document {} to {}", document.getId(), action.getValue());
-                    auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.ROUTED,
-                            "Document", document.getId(), AuditStatus.SUCCESS,
-                            "Forwarded document to: " + action.getValue() + " by rule '" + rule.getName() + "'", "SYSTEM");
-                    break;
-            }
-        }
-    }
-
-    private void handleSendEmailAction(RuleAction action, Document document, Rule rule) {
-        if (action.getEmailConfigJson() == null || action.getEmailConfigJson().isBlank()) return;
-        try {
-            EmailConfigDto emailConfig = objectMapper.readValue(action.getEmailConfigJson(), EmailConfigDto.class);
-            String recipient = resolveRecipient(emailConfig, document);
-            if (recipient != null && !recipient.isBlank()) {
-                Map<String, Object> ctx = buildDocumentContext(document);
-                ctx.put("document.id", document.getId());
-                ctx.put("document.name", document.getName());
-                ctx.put("document.type", document.getType());
-                ctx.put("document.status", document.getStatus() != null ? document.getStatus().getValue() : "");
-                ctx.put("document.priority", document.getPriority() != null ? document.getPriority().getValue() : "");
-
-                emailService.sendEmail(recipient, emailConfig.getSubject(), emailConfig.getMessage(), ctx);
-
-                auditService.log(document.getOrganizationId(), "SYSTEM", "Rule Engine", AuditAction.CREATED,
-                        "Email", document.getId(), AuditStatus.SUCCESS,
-                        "Sent email to " + recipient + " by rule '" + rule.getName() + "'", "SYSTEM");
-            }
-        } catch (JsonProcessingException e) {
-            logger.warn("Failed to parse EmailConfigJson for rule action: {}", e.getMessage());
-        }
-    }
-
     private String resolveRecipient(EmailConfigDto config, Document doc) {
         if (config == null || config.getRecipientType() == null) return null;
         switch (config.getRecipientType()) {
@@ -539,6 +843,15 @@ public class RuleEngineService {
         }
     }
 
+    private Map<String, Object> parseMetadata(String json) {
+        if (json == null || json.isBlank()) return new HashMap<>();
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+
     private Map<String, Object> buildDocumentContext(Document doc) {
         Map<String, Object> ctx = new HashMap<>();
         ctx.put("document.name", doc.getName());
@@ -554,6 +867,7 @@ public class RuleEngineService {
         ctx.put("document.tags", doc.getTags());
         ctx.put("extracted.text", doc.getExtractedText());
         ctx.put("extracted.category", doc.getType());
+        ctx.put("document.status", doc.getStatus() != null ? doc.getStatus().getValue() : "");
 
         if (doc.getMetadataJson() != null && !doc.getMetadataJson().isBlank()) {
             try {
@@ -562,6 +876,7 @@ public class RuleEngineService {
                 if (meta.containsKey("source")) ctx.put("metadata.source", meta.get("source"));
                 if (meta.containsKey("subject")) ctx.put("metadata.subject", meta.get("subject"));
                 if (meta.containsKey("recipient_email")) ctx.put("metadata.recipient_email", meta.get("recipient_email"));
+                if (meta.containsKey("confidence")) ctx.put("ocr.confidence", meta.get("confidence"));
             } catch (Exception ignored) {
             }
         }
@@ -589,6 +904,9 @@ public class RuleEngineService {
             }
             ctx.put("document.department", doc.getDepartment());
             ctx.put("document.tags", doc.getTags() != null ? String.join(",", doc.getTags()) : "");
+            if (doc.getStatus() != null) {
+                ctx.put("document.status", doc.getStatus().getValue());
+            }
             if (doc.getMetadata() != null) {
                 ctx.put("metadata", doc.getMetadata());
                 if (doc.getMetadata().containsKey("source")) ctx.put("metadata.source", doc.getMetadata().get("source"));
@@ -644,6 +962,7 @@ public class RuleEngineService {
         res.setName(rule.getName());
         res.setDescription(rule.getDescription());
         res.setStatus(rule.getStatus());
+        res.setRuleType(rule.getRuleType() != null ? rule.getRuleType() : RuleType.DECISION);
         res.setEvaluationOrder(rule.getEvaluationOrder());
         res.setCreatedAt(rule.getCreatedAt());
         res.setUpdatedAt(rule.getUpdatedAt());

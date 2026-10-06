@@ -25,9 +25,17 @@ public class RuleController {
     }
 
     @GetMapping
-    public ResponseEntity<List<RuleResponse>> getAllRules(@AuthenticationPrincipal UserPrincipal principal) {
+    public ResponseEntity<List<RuleResponse>> getAllRules(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) String ruleType) {
         String orgId = principal != null ? principal.getOrganizationId() : "org-001";
-        List<RuleResponse> rules = ruleEngineService.getAllRules(orgId);
+        com.e2edocs.entity.enums.RuleType parsedType = null;
+        if (ruleType != null && !ruleType.isBlank()) {
+            try {
+                parsedType = com.e2edocs.entity.enums.RuleType.fromValue(ruleType);
+            } catch (Exception ignored) {}
+        }
+        List<RuleResponse> rules = ruleEngineService.getAllRules(orgId, parsedType);
         return ResponseEntity.ok(rules);
     }
 

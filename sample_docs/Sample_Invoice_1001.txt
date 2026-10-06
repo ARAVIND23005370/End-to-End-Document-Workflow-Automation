@@ -1,0 +1,23 @@
+=======================================================
+COMMERCIAL INVOICE - INV-2026-1001
+=======================================================
+Issuer: Enterprise Solutions Global Inc.
+Tax ID: TX-99281-US
+Invoice Date: 2026-10-06
+Payment Terms: Net 30 Days
+
+Bill To: Acme Corp International
+Account Number: AC-8829104
+Customer Email: billing@acmecorp.org
+
+Itemized Summary:
+1. Cloud Infrastructure Management & Hosting: $3,500.00
+2. Enterprise Security & OCR Extraction Suite: $1,250.00
+3. Dedicated SLA Technical Support: $750.00
+-------------------------------------------------------
+Total Amount Due: $5,500.00
+Status: Pending Verification
+
+Authorized Signatory: Johnathan Miller
+Verification Code: VERIFIED-DOC-2026
+=======================================================

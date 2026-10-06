@@ -27,6 +27,10 @@ public class Rule {
     @Column(name = "status", length = 32, nullable = false)
     private RuleStatus status = RuleStatus.ACTIVE;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rule_type", length = 32, nullable = false)
+    private com.e2edocs.entity.enums.RuleType ruleType = com.e2edocs.entity.enums.RuleType.DECISION;
+
     @Column(name = "evaluation_order", nullable = false)
     private Integer evaluationOrder = 1;
 
@@ -56,16 +60,21 @@ public class Rule {
     public Rule() {
     }
 
-    public Rule(String id, String organizationId, String name, String description, RuleStatus status, Integer evaluationOrder) {
+    public Rule(String id, String organizationId, String name, String description, RuleStatus status, com.e2edocs.entity.enums.RuleType ruleType, Integer evaluationOrder) {
         this.id = id;
         this.organizationId = organizationId;
         this.name = name;
         this.description = description;
         this.status = status;
+        this.ruleType = ruleType != null ? ruleType : com.e2edocs.entity.enums.RuleType.DECISION;
         this.evaluationOrder = evaluationOrder != null ? evaluationOrder : 1;
         this.matchCount = 0;
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
+    }
+
+    public Rule(String id, String organizationId, String name, String description, RuleStatus status, Integer evaluationOrder) {
+        this(id, organizationId, name, description, status, com.e2edocs.entity.enums.RuleType.DECISION, evaluationOrder);
     }
 
     @PrePersist
@@ -79,6 +88,9 @@ public class Rule {
         }
         if (this.evaluationOrder == null) {
             this.evaluationOrder = 1;
+        }
+        if (this.ruleType == null) {
+            this.ruleType = com.e2edocs.entity.enums.RuleType.DECISION;
         }
     }
 
@@ -135,6 +147,14 @@ public class Rule {
 
     public void setStatus(RuleStatus status) {
         this.status = status;
+    }
+
+    public com.e2edocs.entity.enums.RuleType getRuleType() {
+        return ruleType;
+    }
+
+    public void setRuleType(com.e2edocs.entity.enums.RuleType ruleType) {
+        this.ruleType = ruleType;
     }
 
     public Integer getEvaluationOrder() {

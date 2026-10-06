@@ -57,7 +57,7 @@ export default function DocumentsPage() {
 
   // --- Upload Modal State ---
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadName, setUploadName] = useState('');
   const [uploadType, setUploadType] = useState('General Document');
   const [uploadPriority, setUploadPriority] = useState<Priority>('medium');
@@ -88,11 +88,11 @@ export default function DocumentsPage() {
 
   // --- Handle Real Upload ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setUploadFile(file);
-      if (!uploadName) {
-        setUploadName(file.name);
+    if (e.target.files && e.target.files.length > 0) {
+      const selected = Array.from(e.target.files);
+      setUploadFiles(selected);
+      if (selected.length === 1 && !uploadName) {
+        setUploadName(selected[0].name);
       }
       setUploadError('');
     }
@@ -100,8 +100,8 @@ export default function DocumentsPage() {
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadFile) {
-      setUploadError('Please select a document file to upload.');
+    if (uploadFiles.length === 0) {
+      setUploadError('Please select at least one document file to upload.');
       return;
     }
 
@@ -109,20 +109,30 @@ export default function DocumentsPage() {
     setUploadError('');
 
     try {
-      await documentService.upload(uploadFile, {
-        name: uploadName.trim() || uploadFile.name,
-        type: uploadType,
-        priority: uploadPriority,
-        department: uploadDept,
-        description: uploadDesc,
-      });
+      if (uploadFiles.length === 1) {
+        await documentService.upload(uploadFiles[0], {
+          name: uploadName.trim() || uploadFiles[0].name,
+          type: uploadType,
+          priority: uploadPriority,
+          department: uploadDept,
+          description: uploadDesc,
+        });
+        showNotification('Document uploaded and ingested through Rule Engine successfully.');
+      } else {
+        const batchResult = await documentService.uploadBatch(uploadFiles, {
+          type: uploadType,
+          priority: uploadPriority,
+          department: uploadDept,
+          description: uploadDesc,
+        });
+        showNotification(`Batch complete: ${batchResult.successful} of ${batchResult.totalFiles} documents ingested.`);
+      }
 
       setIsUploadOpen(false);
-      setUploadFile(null);
+      setUploadFiles([]);
       setUploadName('');
       setUploadDesc('');
       setUploadDept('');
-      showNotification('Document uploaded and ingested successfully.');
       refetch();
     } catch (err: any) {
       setUploadError(err.message || 'Document upload failed. Please verify file format.');
@@ -478,26 +488,31 @@ export default function DocumentsPage() {
                     padding: 'var(--space-5)',
                     textAlign: 'center',
                     cursor: 'pointer',
-                    backgroundColor: uploadFile ? 'var(--color-brand-50, #f0fdf4)' : 'var(--bg-secondary, #f8fafc)',
+                    backgroundColor: uploadFiles.length > 0 ? 'var(--color-brand-50, #f0fdf4)' : 'var(--bg-secondary, #f8fafc)',
                     transition: 'border-color 0.2s'
                   }}
                 >
                   <input
                     ref={fileInputRef}
                     type="file"
+                    multiple
                     accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.tiff"
                     onChange={handleFileSelect}
                     style={{ display: 'none' }}
                   />
-                  {uploadFile ? (
+                  {uploadFiles.length > 0 ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
                       <Paperclip size={20} style={{ color: 'var(--color-brand-600, #16a34a)' }} />
                       <div style={{ textAlign: 'left' }}>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)' }}>
-                          {uploadFile.name}
+                          {uploadFiles.length === 1
+                            ? uploadFiles[0].name
+                            : `${uploadFiles.length} files selected for Batch Processing`}
                         </div>
                         <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-caption)' }}>
-                          {formatFileSize(uploadFile.size)} • Click to change
+                          {uploadFiles.length === 1
+                            ? `${formatFileSize(uploadFiles[0].size)} • Click to change`
+                            : `${formatFileSize(uploadFiles.reduce((a, f) => a + f.size, 0))} total • Click to change`}
                         </div>
                       </div>
                     </div>
@@ -505,34 +520,35 @@ export default function DocumentsPage() {
                     <div>
                       <Upload size={28} style={{ color: 'var(--color-brand-600, #2563eb)', margin: '0 auto var(--space-2)' }} />
                       <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)' }}>
-                        Click to select or drag & drop document
+                        Click to select or drag & drop single or batch documents
                       </div>
                       <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-caption)', marginTop: 4 }}>
-                        Supported formats: PDF, DOCX, TXT, PNG, JPG (up to 50MB)
+                        Supported formats: PDF, DOCX, TXT, PNG, JPG (Select multiple for batch ingestion)
                       </div>
                     </div>
                   )}
                 </div>
 
-                <Input
-                  label="Document Name (Optional)"
-                  placeholder="e.g. Q3 Financial Statement"
-                  value={uploadName}
-                  onChange={(e) => setUploadName(e.target.value)}
-                />
+                {uploadFiles.length <= 1 && (
+                  <Input
+                    label="Document Name (Optional)"
+                    placeholder="e.g. Q3 Financial Statement"
+                    value={uploadName}
+                    onChange={(e) => setUploadName(e.target.value)}
+                  />
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
                   <SelectField
-                    label="Document Type"
+                    label="Document Type / Folder"
                     value={uploadType}
                     onChange={(e) => setUploadType(e.target.value)}
                     options={[
+                      { value: '', label: 'Auto-Classify (Folder Rules)' },
                       { value: 'Invoice', label: 'Invoice' },
                       { value: 'Contract', label: 'Contract' },
                       { value: 'Receipt', label: 'Receipt' },
                       { value: 'Report', label: 'Report' },
-                      { value: 'Policy', label: 'Policy' },
-                      { value: 'Identity Document', label: 'Identity Document' },
                       { value: 'General Document', label: 'General Document' }
                     ]}
                   />
@@ -542,10 +558,11 @@ export default function DocumentsPage() {
                     value={uploadPriority}
                     onChange={(e) => setUploadPriority(e.target.value as Priority)}
                     options={[
-                      { value: 'low', label: 'Low' },
-                      { value: 'medium', label: 'Medium' },
+                      { value: 'medium', label: 'Auto-Sort / Medium' },
+                      { value: 'critical', label: 'Critical' },
                       { value: 'high', label: 'High' },
-                      { value: 'critical', label: 'Critical' }
+                      { value: 'medium', label: 'Medium' },
+                      { value: 'low', label: 'Low' }
                     ]}
                   />
                 </div>
@@ -573,8 +590,8 @@ export default function DocumentsPage() {
                 <Button variant="secondary" type="button" onClick={() => setIsUploadOpen(false)} disabled={uploadLoading}>
                   Cancel
                 </Button>
-                <Button variant="primary" type="submit" disabled={uploadLoading || !uploadFile}>
-                  {uploadLoading ? 'Ingesting Document…' : 'Upload & Process'}
+                <Button variant="primary" type="submit" disabled={uploadLoading || uploadFiles.length === 0}>
+                  {uploadLoading ? 'Ingesting Document…' : uploadFiles.length > 1 ? `Upload & Process ${uploadFiles.length} Documents` : 'Upload & Process'}
                 </Button>
               </div>
             </form>

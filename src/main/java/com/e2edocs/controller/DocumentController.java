@@ -115,6 +115,21 @@ public class DocumentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @PostMapping(value = "/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<BatchUploadResponse> uploadDocumentsBatch(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam("files") java.util.List<MultipartFile> files,
+            @ModelAttribute DocumentCreateRequest request) {
+
+        String orgId = principal != null ? principal.getOrganizationId() : "org-001";
+        String userId = principal != null ? principal.getId() : "SYSTEM";
+        String userName = principal != null ? principal.getName() : "System User";
+
+        BatchUploadResponse response = documentService.createDocumentsBatch(
+                orgId, files, request, userId, userName);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
     @PostMapping("/{id}/send-email")
     public ResponseEntity<Map<String, Object>> sendDocumentByEmail(
             @AuthenticationPrincipal UserPrincipal principal,

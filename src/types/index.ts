@@ -69,6 +69,9 @@ export interface Document {
   departmentId?: string;
   assignedTo?: string;
   assignedToId?: string;
+  decisionReason?: string;
+  missingFields?: string;
+  folder?: string;
   createdAt: string;
   updatedAt: string;
   size: number;
@@ -94,6 +97,7 @@ export interface DetectedInfo {
 }
 
 // --- Rules ---
+export type RuleType = 'decision' | 'folder' | 'sorting' | 'routing' | 'communication';
 export type RuleStatus = 'active' | 'inactive' | 'draft';
 export type ConditionOperator =
   | 'equals'
@@ -125,6 +129,10 @@ export interface ConditionGroup {
 export type ActionType =
   | 'set_priority'
   | 'assign_user'
+  | 'assign_department'
+  | 'assign_team'
+  | 'assign_queue'
+  | 'assign_folder'
   | 'start_workflow'
   | 'send_email'
   | 'send_notification'
@@ -154,6 +162,7 @@ export interface Rule {
   name: string;
   description: string;
   status: RuleStatus;
+  ruleType: RuleType;
   evaluationOrder: number;
   conditionGroups: ConditionGroup[];
   actions: RuleAction[];

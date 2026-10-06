@@ -22,6 +22,9 @@ public class DocumentResponse {
     private String departmentId;
     private String assignedTo;
     private String assignedToId;
+    private String decisionReason;
+    private String missingFields;
+    private String folder;
     private Instant createdAt;
     private Instant updatedAt;
     private Long size;
@@ -175,6 +178,30 @@ public class DocumentResponse {
 
     public void setWorkflowId(String workflowId) {
         this.workflowId = workflowId;
+    }
+
+    public String getDecisionReason() {
+        return decisionReason;
+    }
+
+    public void setDecisionReason(String decisionReason) {
+        this.decisionReason = decisionReason;
+    }
+
+    public String getMissingFields() {
+        return missingFields;
+    }
+
+    public void setMissingFields(String missingFields) {
+        this.missingFields = missingFields;
+    }
+
+    public String getFolder() {
+        return folder;
+    }
+
+    public void setFolder(String folder) {
+        this.folder = folder;
     }
 
     public Map<String, Object> getMetadata() {
