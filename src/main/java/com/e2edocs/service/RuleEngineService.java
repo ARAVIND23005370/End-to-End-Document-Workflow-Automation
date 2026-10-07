@@ -166,7 +166,7 @@ public class RuleEngineService {
         Set<String> matchedRuleIds = new HashSet<>();
         List<String> allMatchedConditions = new ArrayList<>();
         List<String> allFailedConditions = new ArrayList<>();
-        Set<String> missingFields = new LinkedHashSet<>();
+        Collection<String> missingFields = new LinkedHashSet<>();
 
         // Group rules by type / action capability
         List<Rule> decisionRules = activeRules.stream()
@@ -174,19 +174,19 @@ public class RuleEngineService {
                 .collect(Collectors.toList());
 
         List<Rule> folderRules = activeRules.stream()
-                .filter(r -> r.getRuleType() == RuleType.FOLDER || hasActionType(r, ActionType.ASSIGN_FOLDER))
+                .filter(r -> (r.getRuleType() == RuleType.FOLDER || hasActionType(r, ActionType.ASSIGN_FOLDER)) && !decisionRules.contains(r))
                 .collect(Collectors.toList());
 
         List<Rule> sortingRules = activeRules.stream()
-                .filter(r -> r.getRuleType() == RuleType.SORTING || hasActionType(r, ActionType.SET_PRIORITY))
+                .filter(r -> (r.getRuleType() == RuleType.SORTING || hasActionType(r, ActionType.SET_PRIORITY)) && !decisionRules.contains(r))
                 .collect(Collectors.toList());
 
         List<Rule> routingRules = activeRules.stream()
-                .filter(r -> r.getRuleType() == RuleType.ROUTING || hasActionType(r, ActionType.ASSIGN_USER) || hasActionType(r, ActionType.ASSIGN_DEPARTMENT) || hasActionType(r, ActionType.START_WORKFLOW) || hasActionType(r, ActionType.FORWARD_DOCUMENT))
+                .filter(r -> (r.getRuleType() == RuleType.ROUTING || hasActionType(r, ActionType.ASSIGN_USER) || hasActionType(r, ActionType.ASSIGN_DEPARTMENT) || hasActionType(r, ActionType.START_WORKFLOW) || hasActionType(r, ActionType.FORWARD_DOCUMENT)) && !decisionRules.contains(r))
                 .collect(Collectors.toList());
 
         List<Rule> commRules = activeRules.stream()
-                .filter(r -> r.getRuleType() == RuleType.COMMUNICATION || hasActionType(r, ActionType.SEND_EMAIL) || hasActionType(r, ActionType.SEND_NOTIFICATION))
+                .filter(r -> (r.getRuleType() == RuleType.COMMUNICATION || hasActionType(r, ActionType.SEND_EMAIL) || hasActionType(r, ActionType.SEND_NOTIFICATION)) && !decisionRules.contains(r))
                 .collect(Collectors.toList());
 
         // 1. Evaluate DECISION Rules
@@ -202,6 +202,10 @@ public class RuleEngineService {
                     markRuleTriggered(rule);
                 }
                 executeDecisionActions(rule, document, ruleMatched);
+                executeFolderActions(rule, document);
+                executeSortingActions(rule, document);
+                executeRoutingActions(rule, document);
+                executeCommunicationActions(rule, document, ruleMatched, ruleFailed, ruleMissing);
                 executeTagActions(rule, document);
                 allMatchedConditions.addAll(ruleMatched);
                 if (hasActionType(rule, ActionType.SET_DECISION)) {
@@ -419,7 +423,7 @@ public class RuleEngineService {
             Document document,
             List<String> matchedConds,
             List<String> failedConds,
-            Set<String> missingFields) {
+            Collection<String> missingFields) {
 
         for (RuleAction action : rule.getActions()) {
             if (action.getType() == ActionType.SEND_EMAIL) {
@@ -491,7 +495,7 @@ public class RuleEngineService {
             Rule rule,
             List<String> matchedConds,
             List<String> failedConds,
-            Set<String> missingFields) {
+            Collection<String> missingFields) {
 
         if (action.getEmailConfigJson() == null || action.getEmailConfigJson().isBlank()) return;
         try {
@@ -517,7 +521,7 @@ public class RuleEngineService {
             Document doc,
             List<String> matchedConds,
             List<String> failedConds,
-            Set<String> missingFields) {
+            Collection<String> missingFields) {
 
         Map<String, Object> ctx = buildDocumentContext(doc);
         ctx.put("document.id", doc.getId());

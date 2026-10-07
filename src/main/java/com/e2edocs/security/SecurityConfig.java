@@ -72,7 +72,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public Auth Endpoints
                         .requestMatchers(HttpMethod.GET, "/api/auth/signup/status").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/dev-reset").permitAll()
                         .requestMatchers("/", "/health", "/api/health").permitAll()
                         // Public Actuator Health Probes & Info
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()

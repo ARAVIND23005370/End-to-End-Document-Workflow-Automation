@@ -69,4 +69,15 @@ public class AuthController {
         MessageResponse response = authService.changePassword(principal, request);
         return ResponseEntity.ok(response);
     }
+    /**
+     * DEV ONLY: Force-reset a user password. Remove this endpoint after bootstrapping.
+     * POST /api/auth/dev-reset  { "email": "...", "password": "..." }
+     */
+    @PostMapping("/dev-reset")
+    public ResponseEntity<MessageResponse> devReset(@RequestBody java.util.Map<String, String> body) {
+        String email = body.get("email");
+        String password = body.get("password");
+        MessageResponse response = authService.devResetPassword(email, password);
+        return ResponseEntity.ok(response);
+    }
 }

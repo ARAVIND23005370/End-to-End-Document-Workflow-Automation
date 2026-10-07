@@ -1,21 +1,8 @@
+﻿// ===================================================================
+// E2EDocs — Redirect to Decision Automation (Communication is a Decision Action)
 // ===================================================================
-// E2EDocs — First-Class Feature Page: Communication
-// ===================================================================
-
-import { Mail } from 'lucide-react';
-import { RuleFeaturePage } from './RuleFeaturePage';
+import { Navigate } from 'react-router-dom';
 
 export default function CommunicationPage() {
-  return (
-    <RuleFeaturePage
-      ruleType="communication"
-      title="Communication"
-      description="Manage automated email and notification rules triggered by document processing events."
-      badgeLabel="COMMUNICATION RULE"
-      createButtonLabel="Add Communication Rule"
-      icon={<Mail size={24} style={{ color: '#059669' }} />}
-      accentColor="#059669"
-      accentBg="rgba(5, 150, 105, 0.08)"
-    />
-  );
+  return <Navigate to="/decision-rules" replace />;
 }

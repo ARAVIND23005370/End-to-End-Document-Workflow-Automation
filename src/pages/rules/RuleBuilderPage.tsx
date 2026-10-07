@@ -1,33 +1,33 @@
-// ===========================
-// E2EDocs — Section-Isolated Rule Builder Page
+﻿// ===========================
+// E2EDocs — Unified Rule Builder Page (Decision, Folder, Sorting)
 // ===========================
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Trash2, CheckCircle2, FolderTree, ArrowUpDown,
-  SendHorizontal, Mail, Info, Sparkles, Play, AlertCircle
+  Sparkles, Play, AlertCircle, SendHorizontal, Mail, Users, Check,
+  Send, Layers, HelpCircle
 } from 'lucide-react';
 import {
   Button, Card, CardHeader, CardBody, Input, Textarea, SelectField, Breadcrumb, Badge,
 } from '../../components/ui';
 import { useDocumentTitle, useAsync } from '../../hooks';
-import { ruleService, userService, workflowService } from '../../services/api';
+import { ruleService, userService, workflowService, organizationService } from '../../services/api';
 import {
   CONDITION_OPERATORS,
   CONDITION_FIELDS,
-  RULE_SECTIONS,
   DECISION_OUTCOME_OPTIONS,
   SORTING_PRIORITY_OPTIONS,
   ROUTING_DESTINATION_TYPES,
   EMAIL_RECIPIENT_OPTIONS,
+  TEMPLATE_VARIABLE_CHIPS,
 } from '../../constants';
 import { generateId } from '../../utils';
 import type {
   ConditionGroup,
   RuleCondition,
   RuleAction,
-  ConditionLogic,
   RuleStatus,
   RuleType,
   ActionType,
@@ -52,9 +52,16 @@ const getFeaturePath = (type: RuleType) => {
     case 'decision': return '/decision-rules';
     case 'folder': return '/folder-classification';
     case 'sorting': return '/folder-sorting';
-    case 'routing': return '/routing';
-    case 'communication': return '/communication';
     default: return '/decision-rules';
+  }
+};
+
+const getFeatureTitle = (type: RuleType) => {
+  switch (type) {
+    case 'decision': return 'Decision Automation';
+    case 'folder': return 'Folder Classification';
+    case 'sorting': return 'Folder Sorting';
+    default: return 'Decision Automation';
   }
 };
 
@@ -65,6 +72,10 @@ export default function RuleBuilderPage() {
   const isNew = !id || id === 'new';
 
   const initialTypeFromQuery = (searchParams.get('type') as RuleType) || 'decision';
+  // Standardize legacy routing/communication links to decision
+  const initialType: RuleType = (initialTypeFromQuery === 'routing' || initialTypeFromQuery === 'communication') 
+    ? 'decision' 
+    : initialTypeFromQuery;
 
   const { data: existingRule } = useAsync(
     () => (isNew ? Promise.resolve(null) : ruleService.getById(id!)),
@@ -73,26 +84,37 @@ export default function RuleBuilderPage() {
 
   const { data: users = [] } = useAsync(() => userService.getAll(), []);
   const { data: workflows = [] } = useAsync(() => workflowService.getAll(), []);
+  const { data: departments = [] } = useAsync(() => organizationService.getDepartments(), []);
 
-  const [ruleType, setRuleType] = useState<RuleType>(initialTypeFromQuery);
+  const [ruleType, setRuleType] = useState<RuleType>(initialType);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<RuleStatus>('active');
   const [evalOrder, setEvalOrder] = useState('1');
   const [conditionGroups, setConditionGroups] = useState<ConditionGroup[]>([DEFAULT_GROUP()]);
   
-  // Section-specific action states
-  const [decisionOutcome, setDecisionOutcome] = useState('approved');
-  const [folderName, setFolderName] = useState('');
-  const [sortingPriority, setSortingPriority] = useState('high');
+  // Decision outcome state
+  const [decisionOutcome, setDecisionOutcome] = useState<'approved' | 'rejected' | 'review'>('approved');
+  
+  // Optional Routing Action attached to Decision
+  const [enableRouting, setEnableRouting] = useState(false);
   const [routingType, setRoutingType] = useState('assign_user');
   const [routingValue, setRoutingValue] = useState('');
+
+  // Optional Communication Action attached to Decision
+  const [enableCommunication, setEnableCommunication] = useState(false);
   const [emailRecipientType, setEmailRecipientType] = useState<EmailRecipientType>('original_sender');
   const [customRecipient, setCustomRecipient] = useState('');
   const [emailSubject, setEmailSubject] = useState('Update regarding your document: {{document_name}}');
   const [emailMessage, setEmailMessage] = useState(
     'Hello,\n\nYour document (ID: {{document_id}}) has been processed.\nStatus: {{decision}}\n\nDetails: {{review_reason}}\n\nBest regards,\nE2EDocs Platform'
   );
+
+  // Folder classification state
+  const [folderName, setFolderName] = useState('');
+
+  // Folder sorting state
+  const [sortingPriority, setSortingPriority] = useState('high');
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -106,37 +128,43 @@ export default function RuleBuilderPage() {
       setName(existingRule.name);
       setDescription(existingRule.description || '');
       setStatus(existingRule.status);
-      setRuleType(existingRule.ruleType || 'decision');
+      const effectiveType = (existingRule.ruleType === 'routing' || existingRule.ruleType === 'communication')
+        ? 'decision'
+        : (existingRule.ruleType || 'decision');
+      setRuleType(effectiveType);
       setEvalOrder(existingRule.evaluationOrder?.toString() || '1');
       if (existingRule.conditionGroups && existingRule.conditionGroups.length > 0) {
         setConditionGroups(existingRule.conditionGroups);
       }
 
-      // Map actions back into section states
+      // Map actions back into states
       if (existingRule.actions && existingRule.actions.length > 0) {
-        const primaryAction = existingRule.actions[0];
-        if (existingRule.ruleType === 'decision' || primaryAction.type === 'set_decision') {
-          setDecisionOutcome(primaryAction.value || 'approved');
-        } else if (existingRule.ruleType === 'folder' || primaryAction.type === 'assign_folder') {
-          setFolderName(primaryAction.value || '');
-        } else if (existingRule.ruleType === 'sorting' || primaryAction.type === 'set_priority') {
-          setSortingPriority(primaryAction.value || 'high');
-        } else if (existingRule.ruleType === 'routing') {
-          setRoutingType(primaryAction.type);
-          setRoutingValue(primaryAction.value || '');
-        } else if (existingRule.ruleType === 'communication' || primaryAction.type === 'send_email') {
-          if (primaryAction.emailConfig) {
-            setEmailRecipientType(primaryAction.emailConfig.recipientType || 'original_sender');
-            setCustomRecipient(primaryAction.emailConfig.customRecipient || '');
-            setEmailSubject(primaryAction.emailConfig.subject || '');
-            setEmailMessage(primaryAction.emailConfig.message || '');
+        for (const act of existingRule.actions) {
+          if (act.type === 'set_decision') {
+            setDecisionOutcome((act.value as any) || 'approved');
+          } else if (act.type === 'assign_folder') {
+            setFolderName(act.value || '');
+          } else if (act.type === 'set_priority') {
+            setSortingPriority(act.value || 'high');
+          } else if (act.type === 'assign_user' || act.type === 'assign_department' || act.type === 'assign_team' || act.type === 'assign_queue' || act.type === 'start_workflow') {
+            setEnableRouting(true);
+            setRoutingType(act.type);
+            setRoutingValue(act.value || '');
+          } else if (act.type === 'send_email') {
+            setEnableCommunication(true);
+            if (act.emailConfig) {
+              setEmailRecipientType(act.emailConfig.recipientType || 'original_sender');
+              setCustomRecipient(act.emailConfig.customRecipient || '');
+              setEmailSubject(act.emailConfig.subject || '');
+              setEmailMessage(act.emailConfig.message || '');
+            }
           }
         }
       }
     }
   }, [existingRule]);
 
-  useDocumentTitle(isNew ? `Create ${ruleType.toUpperCase()} Rule` : `Edit Rule — ${name || 'Untitled'}`);
+  useDocumentTitle(isNew ? `Create ${getFeatureTitle(ruleType)} Rule` : `Edit Rule — ${name || 'Untitled'}`);
 
   // Condition handlers
   const addConditionGroup = () => setConditionGroups([...conditionGroups, DEFAULT_GROUP()]);
@@ -175,36 +203,30 @@ export default function RuleBuilderPage() {
     ));
   };
 
-  // Compile section-specific actions array
+  // Compile actions array
   const buildActionsForCurrentSection = (): RuleAction[] => {
-    switch (ruleType) {
-      case 'decision':
-        return [{
-          id: generateId('act'),
+    if (ruleType === 'decision') {
+      const actions: RuleAction[] = [
+        {
+          id: generateId('act_dec'),
           type: 'set_decision',
           value: decisionOutcome,
-        }];
-      case 'folder':
-        return [{
-          id: generateId('act'),
-          type: 'assign_folder',
-          value: folderName.trim(),
-        }];
-      case 'sorting':
-        return [{
-          id: generateId('act'),
-          type: 'set_priority',
-          value: sortingPriority,
-        }];
-      case 'routing':
-        return [{
-          id: generateId('act'),
+        }
+      ];
+
+      // Attached optional routing action
+      if (enableRouting && routingValue.trim()) {
+        actions.push({
+          id: generateId('act_route'),
           type: routingType as ActionType,
           value: routingValue.trim(),
-        }];
-      case 'communication':
-        return [{
-          id: generateId('act'),
+        });
+      }
+
+      // Attached optional communication action
+      if (enableCommunication && emailSubject.trim()) {
+        actions.push({
+          id: generateId('act_comm'),
           type: 'send_email',
           value: emailRecipientType,
           emailConfig: {
@@ -213,14 +235,33 @@ export default function RuleBuilderPage() {
             subject: emailSubject.trim(),
             message: emailMessage.trim(),
           },
-        }];
-      default:
-        return [{
-          id: generateId('act'),
-          type: 'set_decision',
-          value: 'approved',
-        }];
+        });
+      }
+
+      return actions;
     }
+
+    if (ruleType === 'folder') {
+      return [{
+        id: generateId('act_folder'),
+        type: 'assign_folder',
+        value: folderName.trim(),
+      }];
+    }
+
+    if (ruleType === 'sorting') {
+      return [{
+        id: generateId('act_sort'),
+        type: 'set_priority',
+        value: sortingPriority,
+      }];
+    }
+
+    return [{
+      id: generateId('act_default'),
+      type: 'set_decision',
+      value: 'approved',
+    }];
   };
 
   const handleSave = async () => {
@@ -234,13 +275,13 @@ export default function RuleBuilderPage() {
       return;
     }
 
-    if (ruleType === 'routing' && !routingValue.trim()) {
-      setSaveError('Destination value is required for Routing Rules.');
+    if (ruleType === 'decision' && enableRouting && !routingValue.trim()) {
+      setSaveError('Destination value is required when routing action is enabled.');
       return;
     }
 
-    if (ruleType === 'communication' && !emailSubject.trim()) {
-      setSaveError('Email Subject is required for Communication Rules.');
+    if (ruleType === 'decision' && enableCommunication && !emailSubject.trim()) {
+      setSaveError('Email Subject is required when automated communication is enabled.');
       return;
     }
 
@@ -284,7 +325,7 @@ export default function RuleBuilderPage() {
         },
         testContext: {
           'extracted.text': testDocumentText,
-          'document.name': 'Sample_Document.pdf',
+          'document.name': 'Sample_Invoice_Document.pdf',
           'sender.email': 'customer@example.org',
           'file.extension': '.pdf',
           'document.status': 'processing',
@@ -300,15 +341,15 @@ export default function RuleBuilderPage() {
     }
   };
 
-  const currentSectionMeta = RULE_SECTIONS.find((s) => s.id === ruleType) || RULE_SECTIONS[0];
   const featurePath = getFeaturePath(ruleType);
+  const featureTitle = getFeatureTitle(ruleType);
 
   return (
-    <div>
+    <div style={{ maxWidth: 1100, margin: '0 auto', paddingBottom: 'var(--space-12)' }}>
       {/* Header */}
       <div className="page-header">
         <Breadcrumb items={[
-          { label: `${currentSectionMeta.label}`, href: featurePath },
+          { label: featureTitle, href: featurePath },
           { label: isNew ? 'New Rule' : (name || 'Edit Rule') },
         ]} />
         <div className="page-header-row" style={{ marginTop: 'var(--space-3)' }}>
@@ -319,11 +360,15 @@ export default function RuleBuilderPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <h1 className="page-title" style={{ fontSize: 'var(--text-h3)' }}>
-                  {isNew ? `Create ${currentSectionMeta.label.replace(' Rules', '')} Rule` : `Edit Rule — ${name || 'Untitled'}`}
+                  {isNew ? `Create ${featureTitle} Rule` : `Edit Rule — ${name || 'Untitled'}`}
                 </h1>
                 <Badge variant="brand">{ruleType.toUpperCase()} RULE</Badge>
               </div>
-              <p className="page-description">{currentSectionMeta.description}</p>
+              <p className="page-description">
+                {ruleType === 'decision' && 'Configure conditions to determine document verification outcome (APPROVE, REJECT, or MANUAL REVIEW) with optional routing and email actions.'}
+                {ruleType === 'folder' && 'Configure conditions to classify documents into dynamic virtual folders or categories.'}
+                {ruleType === 'sorting' && 'Configure conditions to set document sorting priority (CRITICAL, HIGH, MEDIUM, LOW).'}
+              </p>
             </div>
           </div>
           <div className="page-actions">
@@ -353,22 +398,22 @@ export default function RuleBuilderPage() {
         </div>
       )}
 
-      {/* 1. Rule Section & Basic Details Card */}
+      {/* 1. Rule Information Card */}
       <Card style={{ marginBottom: 'var(--space-4)' }}>
         <CardHeader>
           <div>
-            <div className="card-title">Rule Section & Metadata</div>
-            <div className="card-subtitle">Select the rule responsibility section and configure metadata</div>
+            <div className="card-title">1. Rule Information</div>
+            <div className="card-subtitle">General metadata, evaluation status, and rule priority</div>
           </div>
         </CardHeader>
         <CardBody>
           <div className="form-grid-2">
-            <SelectField
-              label="Rule Type / Section"
-              options={RULE_SECTIONS.map((s) => ({ value: s.id, label: s.label }))}
-              value={ruleType}
-              onChange={(e) => setRuleType(e.target.value as RuleType)}
-              helper="Each section has strictly isolated responsibility."
+            <Input
+              label="Rule Name"
+              required
+              placeholder={ruleType === 'decision' ? 'e.g. High Value Invoice Approval' : ruleType === 'folder' ? 'e.g. Classify Tax Returns' : 'e.g. Critical Urgent Dispatch'}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
 
             <SelectField
@@ -381,345 +426,423 @@ export default function RuleBuilderPage() {
               value={status}
               onChange={(e) => setStatus(e.target.value as RuleStatus)}
             />
+          </div>
 
-            <Input
-              label="Rule Name"
-              required
-              placeholder={`e.g. ${ruleType === 'decision' ? 'Verify Document Title & Tax ID' : ruleType === 'folder' ? 'Classify Financial Invoices' : ruleType === 'sorting' ? 'High Urgency Escalation' : ruleType === 'routing' ? 'Assign To Specialist' : 'Customer Approval Notice'}`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <Textarea
+              label="Description (Optional)"
+              placeholder="Explain the business purpose and verification requirements of this rule…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
             />
+          </div>
 
+          <div style={{ marginTop: 'var(--space-3)', maxWidth: 280 }}>
             <Input
-              label="Evaluation Order"
+              label="Rule Evaluation Priority / Order"
               type="number"
               min="1"
-              max="999"
               value={evalOrder}
               onChange={(e) => setEvalOrder(e.target.value)}
-              helper="Determines sequential evaluation order among rules in THIS section."
+              helper="Lower numbers evaluate first (e.g. 1 = highest evaluation priority). Distinct from document sorting priority."
             />
-
-            <div style={{ gridColumn: '1 / -1' }}>
-              <Textarea
-                label="Description"
-                placeholder="Explain the purpose of this rule…"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={2}
-              />
-            </div>
           </div>
         </CardBody>
       </Card>
-
-      {/* 2. Generic Conditions Card */}
+      {/* 2. Conditions Card */}
       <Card style={{ marginBottom: 'var(--space-4)' }}>
         <CardHeader>
           <div>
-            <div className="card-title">Rule Conditions</div>
-            <div className="card-subtitle">Define criteria evaluated on document content, OCR data, title, or metadata</div>
+            <div className="card-title">2. Evaluation Conditions (IF)</div>
+            <div className="card-subtitle">
+              Configure conditions on extracted OCR text, document metadata, sender email, or file properties
+            </div>
           </div>
           <Button variant="secondary" size="sm" onClick={addConditionGroup}>
-            <Plus size={14} /> Add Condition Group
+            <Plus size={14} /> Add Condition Group (OR)
           </Button>
         </CardHeader>
         <CardBody>
-          {conditionGroups.map((group, gi) => (
-            <div key={group.id} style={{
-              border: '1px solid var(--border-primary)',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-4)',
-              marginBottom: gi < conditionGroups.length - 1 ? 'var(--space-3)' : 0,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-widest)' }}>
-                    {gi === 0 ? 'WHEN' : 'OR WHEN'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => toggleGroupLogic(group.id)}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 'var(--radius-sm)',
-                      backgroundColor: 'var(--color-brand-50)',
-                      color: 'var(--color-brand-700)',
-                      fontSize: 'var(--text-label)',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      border: '1px solid var(--color-brand-200)',
-                    }}
-                  >
-                    {group.logic}
-                  </button>
-                </div>
-                {conditionGroups.length > 1 && (
-                  <Button variant="ghost" icon size="sm" onClick={() => removeConditionGroup(group.id)} aria-label="Remove group">
-                    <Trash2 size={14} />
-                  </Button>
-                )}
-              </div>
-
-              {group.conditions.map((cond) => (
-                <div key={cond.id} className="rule-condition-row" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
-                  <div style={{ flex: '1 1 30%' }}>
-                    <SelectField
-                      options={CONDITION_FIELDS}
-                      value={cond.field}
-                      onChange={(e) => updateCondition(group.id, cond.id, 'field', e.target.value)}
-                    />
-                  </div>
-                  <div style={{ flex: '1 1 25%' }}>
-                    <SelectField
-                      options={CONDITION_OPERATORS}
-                      value={cond.operator}
-                      onChange={(e) => updateCondition(group.id, cond.id, 'operator', e.target.value)}
-                    />
-                  </div>
-                  <div style={{ flex: '1 1 40%' }}>
-                    <Input
-                      placeholder={
-                        cond.field === 'extracted.text' ? 'e.g. Account Number, Loan Agreement, Tax ID' :
-                        cond.field === 'document.name' ? 'e.g. Master_Agreement.pdf' :
-                        cond.field === 'sender.email' ? 'e.g. @partner.org' : 'Enter expected value'
-                      }
-                      value={cond.value}
-                      onChange={(e) => updateCondition(group.id, cond.id, 'value', e.target.value)}
-                    />
-                  </div>
-                  <div style={{ width: 36, display: 'flex', alignItems: 'center' }}>
-                    <Button
-                      variant="ghost"
-                      icon
-                      size="sm"
-                      onClick={() => removeCondition(group.id, cond.id)}
-                      disabled={group.conditions.length <= 1}
-                      aria-label="Remove condition"
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {conditionGroups.map((group, groupIndex) => (
+              <div
+                key={group.id}
+                style={{
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                  backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <span style={{ fontSize: 'var(--text-caption)', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
+                      Group {groupIndex + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupLogic(group.id)}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-brand-300)',
+                        backgroundColor: 'var(--color-brand-50)',
+                        color: 'var(--color-brand-700)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                      title="Click to toggle logic operator between conditions"
                     >
-                      <Trash2 size={14} />
-                    </Button>
+                      {group.logic} (Match {group.logic === 'AND' ? 'ALL' : 'ANY'})
+                    </button>
                   </div>
-                </div>
-              ))}
 
-              <Button variant="ghost" size="sm" onClick={() => addCondition(group.id)} style={{ marginTop: 'var(--space-2)' }}>
-                <Plus size={14} /> Add Condition
-              </Button>
-            </div>
-          ))}
+                  {conditionGroups.length > 1 && (
+                    <Button variant="ghost" size="sm" onClick={() => removeConditionGroup(group.id)} style={{ color: 'var(--color-error-600)' }}>
+                      <Trash2 size={14} /> Remove Group
+                    </Button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                  {group.conditions.map((cond, condIndex) => (
+                    <div
+                      key={cond.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(180px, 1.5fr) minmax(140px, 1fr) minmax(180px, 2fr) 36px',
+                        gap: 'var(--space-2)',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <SelectField
+                        value={cond.field}
+                        onChange={(e) => updateCondition(group.id, cond.id, 'field', e.target.value)}
+                        options={CONDITION_FIELDS}
+                      />
+
+                      <SelectField
+                        value={cond.operator}
+                        onChange={(e) => updateCondition(group.id, cond.id, 'operator', e.target.value)}
+                        options={CONDITION_OPERATORS}
+                      />
+
+                      <Input
+                        placeholder="Expected value / keyword…"
+                        value={cond.value}
+                        onChange={(e) => updateCondition(group.id, cond.id, 'value', e.target.value)}
+                      />
+
+                      {group.conditions.length > 1 ? (
+                        <Button
+                          variant="ghost"
+                          icon
+                          size="sm"
+                          onClick={() => removeCondition(group.id, cond.id)}
+                          aria-label="Remove condition"
+                          style={{ color: 'var(--color-error-600)' }}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      ) : <div />}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <Button variant="ghost" size="sm" onClick={() => addCondition(group.id)}>
+                    <Plus size={12} /> Add Condition in Group
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         </CardBody>
       </Card>
 
-      {/* 3. Section-Specific Isolated Outcome Card */}
-      <Card style={{ marginBottom: 'var(--space-4)' }}>
-        <CardHeader>
-          <div>
-            <div className="card-title">
-              {ruleType === 'decision' && 'Decision Outcome'}
-              {ruleType === 'folder' && 'Folder & Classification Assignment'}
-              {ruleType === 'sorting' && 'Document Sorting Priority'}
-              {ruleType === 'routing' && 'Routing Destination'}
-              {ruleType === 'communication' && 'Automated Email & Notification Configuration'}
-            </div>
-            <div className="card-subtitle">
-              {ruleType === 'decision' && 'Configure the document approval state applied when conditions pass'}
-              {ruleType === 'folder' && 'Define the virtual folder / category where matching documents are grouped'}
-              {ruleType === 'sorting' && 'Set the priority used to sort documents inside folders and queues'}
-              {ruleType === 'routing' && 'Select the destination user, team, department, or queue'}
-              {ruleType === 'communication' && 'Set up dynamic email templates sent on trigger events'}
-            </div>
-          </div>
-        </CardHeader>
-        <CardBody>
-          {/* DECISION SECTION */}
-          {ruleType === 'decision' && (
-            <div style={{ maxWidth: 540 }}>
-              <SelectField
-                label="Target Decision Outcome"
-                options={DECISION_OUTCOME_OPTIONS}
-                value={decisionOutcome}
-                onChange={(e) => setDecisionOutcome(e.target.value)}
-                helper="Decision rules ONLY set Approve, Reject, or Manual Review."
-              />
-              <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', backgroundColor: 'var(--color-gray-50)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-body-sm)' }}>
-                {decisionOutcome === 'approved' && <span className="text-success-700 font-medium">✓ Document will be marked APPROVED and audit logged.</span>}
-                {decisionOutcome === 'rejected' && <span className="text-error-700 font-medium">✗ Document will be marked REJECTED with failed conditions recorded.</span>}
-                {decisionOutcome === 'review' && <span className="text-warning-700 font-medium">⚠ Document will be flagged for MANUAL REVIEW with reason details.</span>}
+      {/* 3. Decision Outcome & Actions (FOR DECISION RULES) */}
+      {ruleType === 'decision' && (
+        <>
+          {/* Decision Outcome Card */}
+          <Card style={{ marginBottom: 'var(--space-4)' }}>
+            <CardHeader>
+              <div>
+                <div className="card-title">3. Decision Outcome (THEN)</div>
+                <div className="card-subtitle">Select the verification outcome when conditions are satisfied</div>
               </div>
-            </div>
-          )}
+            </CardHeader>
+            <CardBody>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                {DECISION_OUTCOME_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-3)',
+                      padding: '12px 16px',
+                      borderRadius: 'var(--radius-md)',
+                      border: `1px solid ${decisionOutcome === opt.value ? 'var(--color-brand-600, #2563eb)' : 'var(--border-primary, #e2e8f0)'}`,
+                      backgroundColor: decisionOutcome === opt.value ? 'var(--color-brand-50, #eff6ff)' : 'var(--bg-primary, #ffffff)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="decisionOutcome"
+                      value={opt.value}
+                      checked={decisionOutcome === opt.value}
+                      onChange={() => setDecisionOutcome(opt.value as any)}
+                      style={{ accentColor: 'var(--color-brand-600)' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--text-body)', color: 'var(--text-primary)' }}>
+                        {opt.value === 'approved' && <span style={{ marginRight: 8 }}><Badge variant="success">APPROVE</Badge></span>}
+                        {opt.value === 'rejected' && <span style={{ marginRight: 8 }}><Badge variant="error">REJECT</Badge></span>}
+                        {opt.value === 'review' && <span style={{ marginRight: 8 }}><Badge variant="warning">MANUAL REVIEW</Badge></span>}
+                        <span>{opt.label}</span>
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
 
-          {/* FOLDER SECTION */}
-          {ruleType === 'folder' && (
-            <div style={{ maxWidth: 540 }}>
+          {/* Optional Routing / Assignment Action */}
+          <Card style={{ marginBottom: 'var(--space-4)' }}>
+            <CardHeader>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <SendHorizontal size={18} style={{ color: '#0284c7' }} />
+                <div>
+                  <div className="card-title">4. Optional Routing / Assignment Action</div>
+                  <div className="card-subtitle">Automatically route or assign document upon this decision outcome</div>
+                </div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={enableRouting}
+                  onChange={(e) => setEnableRouting(e.target.checked)}
+                  style={{ accentColor: 'var(--color-brand-600)' }}
+                />
+                <span>Enable Routing Action</span>
+              </label>
+            </CardHeader>
+            {enableRouting && (
+              <CardBody>
+                <div className="form-grid-2">
+                  <SelectField
+                    label="Destination Type"
+                    options={ROUTING_DESTINATION_TYPES}
+                    value={routingType}
+                    onChange={(e) => {
+                      setRoutingType(e.target.value);
+                      setRoutingValue('');
+                    }}
+                  />
+
+                  {routingType === 'assign_user' ? (
+                    <SelectField
+                      label="Select User"
+                      options={[
+                        { value: '', label: 'Select a user…' },
+                        ...(users || []).map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+                      ]}
+                      value={routingValue}
+                      onChange={(e) => setRoutingValue(e.target.value)}
+                    />
+                  ) : routingType === 'assign_department' ? (
+                    <SelectField
+                      label="Select Department"
+                      options={[
+                        { value: '', label: 'Select a department…' },
+                        ...(departments || []).map((d) => ({ value: d.name, label: d.name })),
+                      ]}
+                      value={routingValue}
+                      onChange={(e) => setRoutingValue(e.target.value)}
+                    />
+                  ) : routingType === 'start_workflow' ? (
+                    <SelectField
+                      label="Select Workflow"
+                      options={[
+                        { value: '', label: 'Select a workflow…' },
+                        ...(workflows || []).map((w) => ({ value: w.id, label: w.name })),
+                      ]}
+                      value={routingValue}
+                      onChange={(e) => setRoutingValue(e.target.value)}
+                    />
+                  ) : (
+                    <Input
+                      label="Destination Identifier / Name"
+                      required
+                      placeholder={
+                        routingType === 'assign_team' ? 'e.g. Intake Team, Review Squad' : 'e.g. Urgent Processing Queue'
+                      }
+                      value={routingValue}
+                      onChange={(e) => setRoutingValue(e.target.value)}
+                    />
+                  )}
+                </div>
+              </CardBody>
+            )}
+          </Card>
+
+          {/* Optional Communication / Notification Action */}
+          <Card style={{ marginBottom: 'var(--space-4)' }}>
+            <CardHeader>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <Mail size={18} style={{ color: '#059669' }} />
+                <div>
+                  <div className="card-title">5. Optional Communication / Email Action</div>
+                  <div className="card-subtitle">Send automated email or notification triggered by this decision outcome</div>
+                </div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={enableCommunication}
+                  onChange={(e) => setEnableCommunication(e.target.checked)}
+                  style={{ accentColor: 'var(--color-brand-600)' }}
+                />
+                <span>Enable Automated Email</span>
+              </label>
+            </CardHeader>
+            {enableCommunication && (
+              <CardBody>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                  <div className="form-grid-2">
+                    <SelectField
+                      label="Recipient Target"
+                      options={EMAIL_RECIPIENT_OPTIONS}
+                      value={emailRecipientType}
+                      onChange={(e) => setEmailRecipientType(e.target.value as EmailRecipientType)}
+                    />
+
+                    {emailRecipientType === 'custom' && (
+                      <Input
+                        label="Specific Email Address"
+                        required
+                        placeholder="e.g. alerts@company.org"
+                        value={customRecipient}
+                        onChange={(e) => setCustomRecipient(e.target.value)}
+                      />
+                    )}
+                  </div>
+
+                  <Input
+                    label="Email Subject Template"
+                    required
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                  />
+
+                  <Textarea
+                    label="Email Message Body Template"
+                    required
+                    rows={5}
+                    value={emailMessage}
+                    onChange={(e) => setEmailMessage(e.target.value)}
+                  />
+
+                  {/* Dynamic Variables Helper Chips */}
+                  <div style={{
+                    backgroundColor: 'var(--color-gray-50, #f8fafc)',
+                    padding: 'var(--space-3) var(--space-4)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-secondary)',
+                  }}>
+                    <div style={{ fontSize: 'var(--text-caption)', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+                      Dynamic Template Variables (Click to insert):
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {TEMPLATE_VARIABLE_CHIPS.map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setEmailMessage((prev) => `${prev} ${chip}`)}
+                          style={{
+                            padding: '2px 8px',
+                            backgroundColor: 'var(--bg-elevated, #ffffff)',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: 'var(--radius-sm)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            color: 'var(--color-brand-700)',
+                          }}
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardBody>
+            )}
+          </Card>
+        </>
+      )}
+
+      {/* 3. Folder Classification Outcome (FOR FOLDER RULES) */}
+      {ruleType === 'folder' && (
+        <Card style={{ marginBottom: 'var(--space-4)' }}>
+          <CardHeader>
+            <div>
+              <div className="card-title">3. Dynamic Folder / Category Assignment</div>
+              <div className="card-subtitle">Set the target folder / category when conditions match</div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <div className="form-grid-2">
               <Input
-                label="Virtual Folder / Category Name"
+                label="Target Folder / Category Name"
                 required
-                placeholder="e.g. Invoices, Service Agreements, Complaints, KYC Verification"
+                placeholder="e.g. Invoices, Contracts, Receipts, Tax Filings"
                 value={folderName}
                 onChange={(e) => setFolderName(e.target.value)}
-                helper="Matching documents will be automatically segregated into this virtual category/folder."
+                helper="Documents matching this rule will be classified into this folder/category."
               />
             </div>
-          )}
+          </CardBody>
+        </Card>
+      )}
 
-          {/* SORTING SECTION */}
-          {ruleType === 'sorting' && (
-            <div style={{ maxWidth: 540 }}>
+      {/* 3. Folder Sorting Outcome (FOR SORTING RULES) */}
+      {ruleType === 'sorting' && (
+        <Card style={{ marginBottom: 'var(--space-4)' }}>
+          <CardHeader>
+            <div>
+              <div className="card-title">3. Document Sorting Priority</div>
+              <div className="card-subtitle">Set queue ordering priority inside folders and views</div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <div className="form-grid-2">
               <SelectField
                 label="Document Sorting Priority"
                 options={SORTING_PRIORITY_OPTIONS}
                 value={sortingPriority}
                 onChange={(e) => setSortingPriority(e.target.value)}
-                helper="Controls document priority in queue views. Completely separate from rule evaluation order."
+                helper="Controls document position in queue views (CRITICAL, HIGH, MEDIUM, LOW). Completely separate from rule evaluation priority."
               />
             </div>
-          )}
+          </CardBody>
+        </Card>
+      )}
 
-          {/* ROUTING SECTION */}
-          {ruleType === 'routing' && (
-            <div className="form-grid-2">
-              <SelectField
-                label="Destination Type"
-                options={ROUTING_DESTINATION_TYPES}
-                value={routingType}
-                onChange={(e) => {
-                  setRoutingType(e.target.value);
-                  setRoutingValue('');
-                }}
-              />
-
-              {routingType === 'assign_user' ? (
-                <SelectField
-                  label="Select User"
-                  options={[
-                    { value: '', label: 'Select a user…' },
-                    ...(users || []).map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
-                  ]}
-                  value={routingValue}
-                  onChange={(e) => setRoutingValue(e.target.value)}
-                />
-              ) : routingType === 'start_workflow' ? (
-                <SelectField
-                  label="Select Workflow"
-                  options={[
-                    { value: '', label: 'Select a workflow…' },
-                    ...(workflows || []).map((w) => ({ value: w.id, label: w.name })),
-                  ]}
-                  value={routingValue}
-                  onChange={(e) => setRoutingValue(e.target.value)}
-                />
-              ) : (
-                <Input
-                  label="Destination Identifier / Name"
-                  required
-                  placeholder={
-                    routingType === 'assign_department' ? 'e.g. Operations, Legal, Accounts' :
-                    routingType === 'assign_team' ? 'e.g. Intake Team, Review Squad' : 'e.g. Urgent Processing Queue'
-                  }
-                  value={routingValue}
-                  onChange={(e) => setRoutingValue(e.target.value)}
-                />
-              )}
-            </div>
-          )}
-
-          {/* COMMUNICATION SECTION */}
-          {ruleType === 'communication' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <div className="form-grid-2">
-                <SelectField
-                  label="Recipient Target"
-                  options={EMAIL_RECIPIENT_OPTIONS}
-                  value={emailRecipientType}
-                  onChange={(e) => setEmailRecipientType(e.target.value as EmailRecipientType)}
-                />
-
-                {emailRecipientType === 'custom' && (
-                  <Input
-                    label="Specific Email Address"
-                    required
-                    placeholder="e.g. alerts@company.org"
-                    value={customRecipient}
-                    onChange={(e) => setCustomRecipient(e.target.value)}
-                  />
-                )}
-              </div>
-
-              <Input
-                label="Email Subject Template"
-                required
-                value={emailSubject}
-                onChange={(e) => setEmailSubject(e.target.value)}
-              />
-
-              <Textarea
-                label="Email Message Body Template"
-                required
-                rows={6}
-                value={emailMessage}
-                onChange={(e) => setEmailMessage(e.target.value)}
-              />
-
-              {/* Dynamic Variables Helper Chips */}
-              <div style={{
-                backgroundColor: 'var(--color-gray-50)',
-                padding: 'var(--space-3) var(--space-4)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-secondary)',
-              }}>
-                <div style={{ fontSize: 'var(--text-caption)', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
-                  Available Dynamic Template Variables (Click to insert):
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {[
-                    '{{document_name}}',
-                    '{{document_id}}',
-                    '{{decision}}',
-                    '{{missing_fields}}',
-                    '{{failed_conditions}}',
-                    '{{review_reason}}',
-                    '{{priority}}',
-                    '{{category}}',
-                    '{{folder}}',
-                    '{{assigned_user}}',
-                    '{{department}}',
-                  ].map((chip) => (
-                    <button
-                      key={chip}
-                      type="button"
-                      onClick={() => setEmailMessage((prev) => `${prev} ${chip}`)}
-                      style={{
-                        padding: '2px 8px',
-                        backgroundColor: 'var(--color-white, #fff)',
-                        border: '1px solid var(--border-primary)',
-                        borderRadius: 'var(--radius-sm)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '11px',
-                        cursor: 'pointer',
-                        color: 'var(--color-brand-700)',
-                      }}
-                    >
-                      {chip}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </CardBody>
-      </Card>
-
-      {/* 4. Rule Simulation / Test Card */}
+      {/* 6. Rule Simulation / Test Card */}
       <Card>
         <CardHeader>
           <div>
             <div className="card-title">Simulate & Test Rule</div>
-            <div className="card-subtitle">Test this rule against sample text or document content without side effects</div>
+            <div className="card-subtitle">Test this rule against sample text or OCR document content without side effects</div>
           </div>
           <Button variant="secondary" size="sm" onClick={handleTestRule} disabled={testLoading}>
-            <Play size={14} /> {testLoading ? 'Evaluating…' : 'Run Simulation'}
+            <Play size={14} /> {testLoading ? 'Evaluating…' : 'Run Test'}
           </Button>
         </CardHeader>
         <CardBody>

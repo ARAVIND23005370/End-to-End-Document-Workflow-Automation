@@ -1,13 +1,13 @@
-// ===========================
-// E2EDocs — Documents Page (Real API Integration, Upload, Export, Manual Email)
+﻿// ===========================
+// E2EDocs — Documents Page (Document Ingestion, Upload File, Upload Folder, Export, Manual Email)
 // ===========================
 
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Upload, Download, MoreHorizontal, Eye, Trash2,
-  FileText, Mail, Send, X, AlertTriangle, CheckCircle2,
-  Paperclip, RefreshCw
+  Upload, FolderUp, Download, MoreHorizontal, Eye, Trash2,
+  FileText, Send, X, AlertTriangle, CheckCircle2,
+  Paperclip, RefreshCw, FolderArchive
 } from 'lucide-react';
 import {
   Button, Card, SearchInput, SelectField,
@@ -16,12 +16,12 @@ import {
 } from '../../components/ui';
 import { useDocumentTitle, useAsync, useDebouncedValue } from '../../hooks';
 import { documentService, organizationService } from '../../services/api';
-import { formatDate, formatRelativeTime, formatFileSize } from '../../utils';
+import { formatRelativeTime, formatFileSize } from '../../utils';
 import { DOCUMENT_STATUS_LABELS, PRIORITY_LABELS, DOCUMENT_SOURCE_LABELS } from '../../constants';
-import type { Document, DocumentStatus, Priority, DocumentSource } from '../../types';
+import type { Document, Priority } from '../../types';
 
 export default function DocumentsPage() {
-  useDocumentTitle('Documents');
+  useDocumentTitle('Documents — Ingestion & Management');
   const navigate = useNavigate();
 
   // Search & Filter State
@@ -54,6 +54,8 @@ export default function DocumentsPage() {
   const totalDocuments = result?.total || 0;
 
   // --- Upload Modal State ---
+  // Mode: 'file' (single document) or 'folder' (batch / directory)
+  const [uploadMode, setUploadMode] = useState<'file' | 'folder'>('file');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadName, setUploadName] = useState('');
@@ -63,7 +65,9 @@ export default function DocumentsPage() {
   const [uploadDesc, setUploadDesc] = useState('');
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const singleFileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   // --- Export State ---
   const [exportLoading, setExportLoading] = useState(false);
@@ -84,14 +88,45 @@ export default function DocumentsPage() {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // --- Handle Real Upload ---
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // --- Trigger Upload Dialogs ---
+  const handleOpenFileUpload = () => {
+    setUploadMode('file');
+    setUploadFiles([]);
+    setUploadName('');
+    setUploadDesc('');
+    setUploadDept('');
+    setUploadError('');
+    setIsUploadOpen(true);
+    setTimeout(() => singleFileInputRef.current?.click(), 100);
+  };
+
+  const handleOpenFolderUpload = () => {
+    setUploadMode('folder');
+    setUploadFiles([]);
+    setUploadName('');
+    setUploadDesc('');
+    setUploadDept('');
+    setUploadError('');
+    setIsUploadOpen(true);
+    setTimeout(() => folderInputRef.current?.click(), 100);
+  };
+
+  // --- Handle File Select ---
+  const handleSingleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const selected = [e.target.files[0]];
+      setUploadFiles(selected);
+      if (!uploadName) {
+        setUploadName(selected[0].name);
+      }
+      setUploadError('');
+    }
+  };
+
+  const handleFolderFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selected = Array.from(e.target.files);
       setUploadFiles(selected);
-      if (selected.length === 1 && !uploadName) {
-        setUploadName(selected[0].name);
-      }
       setUploadError('');
     }
   };
@@ -99,7 +134,9 @@ export default function DocumentsPage() {
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (uploadFiles.length === 0) {
-      setUploadError('Please select at least one document file to upload.');
+      setUploadError(uploadMode === 'file' 
+        ? 'Please select a document file to upload.' 
+        : 'Please select folder documents to upload as a batch.');
       return;
     }
 
@@ -107,7 +144,7 @@ export default function DocumentsPage() {
     setUploadError('');
 
     try {
-      if (uploadFiles.length === 1) {
+      if (uploadMode === 'file' || uploadFiles.length === 1) {
         await documentService.upload(uploadFiles[0], {
           name: uploadName.trim() || uploadFiles[0].name,
           type: uploadType,
@@ -115,7 +152,7 @@ export default function DocumentsPage() {
           department: uploadDept,
           description: uploadDesc,
         });
-        showNotification('Document uploaded and ingested through Rule Engine successfully.');
+        showNotification('Document uploaded and evaluated through Decision Automation.');
       } else {
         const batchResult = await documentService.uploadBatch(uploadFiles, {
           type: uploadType,
@@ -123,7 +160,7 @@ export default function DocumentsPage() {
           department: uploadDept,
           description: uploadDesc,
         });
-        showNotification(`Batch complete: ${batchResult.successful} of ${batchResult.totalFiles} documents ingested.`);
+        showNotification(`Folder batch complete: ${batchResult.successful} of ${batchResult.totalFiles} documents ingested and evaluated.`);
       }
 
       setIsUploadOpen(false);
@@ -133,7 +170,7 @@ export default function DocumentsPage() {
       setUploadDept('');
       refetch();
     } catch (err: any) {
-      setUploadError(err.message || 'Document upload failed. Please verify file format.');
+      setUploadError(err.message || 'Document ingestion failed. Please verify file format.');
     } finally {
       setUploadLoading(false);
     }
@@ -223,6 +260,25 @@ export default function DocumentsPage() {
 
   return (
     <div>
+      {/* Hidden File / Folder Inputs */}
+      <input
+        type="file"
+        ref={singleFileInputRef}
+        onChange={handleSingleFileChange}
+        style={{ display: 'none' }}
+        accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.tiff,.txt,.csv"
+      />
+      <input
+        type="file"
+        ref={folderInputRef}
+        onChange={handleFolderFilesChange}
+        // @ts-expect-error standard directory upload attribute in Chromium & Firefox
+        webkitdirectory=""
+        directory=""
+        multiple
+        style={{ display: 'none' }}
+      />
+
       {/* Toast Notification */}
       {notification && (
         <div style={{
@@ -242,14 +298,17 @@ export default function DocumentsPage() {
         <div className="page-header-row">
           <div>
             <h1 className="page-title">Documents</h1>
-            <p className="page-description">Manage, review, evaluate, and deliver documents across configurable workflow rules.</p>
+            <p className="page-description">Ingest, manage, review, and evaluate documents across configured decision rules.</p>
           </div>
           <div className="page-actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <Button variant="secondary" size="sm" onClick={handleExport} disabled={exportLoading}>
-              <Download size={14} /> {exportLoading ? 'Exporting…' : 'Export'}
+              <Download size={14} /> {exportLoading ? 'Exporting…' : 'Export CSV'}
             </Button>
-            <Button variant="primary" size="sm" onClick={() => setIsUploadOpen(true)}>
-              <Upload size={14} /> Upload Document
+            <Button variant="secondary" size="sm" onClick={handleOpenFileUpload}>
+              <Upload size={14} /> Upload File
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleOpenFolderUpload}>
+              <FolderUp size={14} /> Upload Folder
             </Button>
           </div>
         </div>
@@ -299,139 +358,141 @@ export default function DocumentsPage() {
               Clear
             </Button>
           )}
+          <Button variant="ghost" size="sm" onClick={() => refetch()} title="Refresh list">
+            <RefreshCw size={14} />
+          </Button>
         </div>
 
-        {/* Real Document List Content */}
-        {status === 'loading' ? (
-          <LoadingState message="Loading documents…" />
-        ) : status === 'error' ? (
+        {/* Content */}
+        {status === 'loading' && <LoadingState message="Loading documents from storage…" />}
+        {status === 'error' && (
           <ErrorState message={error || 'Failed to load documents'} onRetry={refetch} />
-        ) : documents.length === 0 ? (
+        )}
+        {status === 'success' && documents.length === 0 && (
           <EmptyState
             icon={<FileText size={40} />}
             title="No documents found"
-            description={search || statusFilter || priorityFilter || sourceFilter
-              ? 'Try adjusting your search or filters.'
-              : 'Upload your first PDF, DOCX, or text document to get started.'}
+            description={search || statusFilter || priorityFilter ? 'Try adjusting your search filters.' : 'Upload a document or folder to begin automated ingestion & rule evaluation.'}
             action={
-              <Button variant="primary" onClick={() => setIsUploadOpen(true)}>
-                <Plus size={14} /> Upload Document
-              </Button>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <Button variant="secondary" size="sm" onClick={handleOpenFileUpload}>
+                  <Upload size={14} /> Upload File
+                </Button>
+                <Button variant="primary" size="sm" onClick={handleOpenFolderUpload}>
+                  <FolderUp size={14} /> Upload Folder
+                </Button>
+              </div>
             }
           />
-        ) : (
+        )}
+        {status === 'success' && documents.length > 0 && (
           <>
-            <div className="table-container">
-              <table className="data-table">
+            <div className="table-wrapper">
+              <table className="table" aria-label="Documents list">
                 <thead>
                   <tr>
                     <th>Document</th>
-                    <th>Type</th>
-                    <th>Source</th>
                     <th>Status</th>
                     <th>Priority</th>
+                    <th>Source</th>
                     <th>Department</th>
                     <th>Assigned To</th>
                     <th>Updated</th>
-                    <th className="cell-actions">Actions</th>
+                    <th style={{ width: 44 }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {documents.map((doc) => {
-                    const sourceText = DOCUMENT_SOURCE_LABELS[doc.source] || doc.source;
-                    return (
-                      <tr key={doc.id}>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <span
-                              className="cell-primary"
-                              style={{ cursor: 'pointer', fontWeight: 500 }}
-                              onClick={() => navigate(`/documents/${doc.id}`)}
-                            >
-                              {doc.name}
-                            </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                              <span className="cell-id">{doc.id}</span>
-                              {doc.originalSender?.email && (
-                                <span
-                                  style={{
-                                    fontSize: 'var(--text-caption)',
-                                    color: 'var(--text-tertiary)',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 3,
-                                  }}
-                                  title={`Original Sender: ${doc.originalSender.name ? `${doc.originalSender.name} <${doc.originalSender.email}>` : doc.originalSender.email}`}
-                                >
-                                  <Mail size={11} />
-                                  {doc.originalSender.email}
-                                </span>
-                              )}
-                              {doc.size > 0 && (
-                                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                                  ({formatFileSize(doc.size)})
-                                </span>
-                              )}
+                  {documents.map((doc) => (
+                    <tr
+                      key={doc.id}
+                      onClick={() => navigate(`/documents/${doc.id}`)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                          <div style={{
+                            width: 32, height: 32, borderRadius: 'var(--radius-md, 6px)',
+                            backgroundColor: 'var(--color-brand-50, #eff6ff)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            <FileText size={16} style={{ color: 'var(--color-brand-600, #2563eb)' }} />
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.name}</div>
+                            <div style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                              {doc.id} {doc.size > 0 && `• ${formatFileSize(doc.size)}`}
                             </div>
                           </div>
-                        </td>
-                        <td className="cell-secondary">{doc.type}</td>
-                        <td>
-                          <Badge variant={doc.source === 'email' ? 'brand' : 'neutral'}>
-                            {sourceText}
-                          </Badge>
-                        </td>
-                        <td><StatusBadge status={doc.status} /></td>
-                        <td><PriorityBadge priority={doc.priority} /></td>
-                        <td className="cell-secondary">{doc.department || '—'}</td>
-                        <td>
-                          {doc.assignedTo ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                              <Avatar name={doc.assignedTo} size="sm" />
-                              <span className="cell-secondary">{doc.assignedTo}</span>
-                            </div>
-                          ) : (
-                            <span className="cell-secondary" style={{ fontStyle: 'italic', color: 'var(--text-tertiary)' }}>Unassigned</span>
-                          )}
-                        </td>
-                        <td className="cell-secondary" title={formatDate(doc.updatedAt)}>{formatRelativeTime(doc.updatedAt)}</td>
-                        <td className="cell-actions">
-                          <Dropdown
-                            trigger={<Button variant="ghost" icon size="sm" aria-label="Actions"><MoreHorizontal size={14} /></Button>}
-                          >
-                            <DropdownItem onClick={() => navigate(`/documents/${doc.id}`)}>
-                              <Eye size={14} /> View Details
-                            </DropdownItem>
-                            <DropdownItem onClick={() => openEmailModal(doc)}>
-                              <Send size={14} /> Send via Email
-                            </DropdownItem>
-                            <DropdownItem onClick={() => handleDownload(doc)}>
-                              <Download size={14} /> Download
-                            </DropdownItem>
-                            <div className="dropdown-separator" />
-                            <DropdownItem onClick={() => handleDelete(doc)} className="text-error">
-                              <Trash2 size={14} /> Delete
-                            </DropdownItem>
-                          </Dropdown>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        </div>
+                      </td>
+                      <td><StatusBadge status={doc.status} /></td>
+                      <td><PriorityBadge priority={doc.priority} /></td>
+                      <td>
+                        <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-secondary)' }}>
+                          {DOCUMENT_SOURCE_LABELS[doc.source] || doc.source}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-secondary)' }}>
+                          {doc.department || '—'}
+                        </span>
+                      </td>
+                      <td>
+                        {doc.assignedTo ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                            <Avatar name={doc.assignedTo} size="sm" />
+                            <span style={{ fontSize: 'var(--text-body-sm)' }}>{doc.assignedTo}</span>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-body-sm)' }}>Unassigned</span>
+                        )}
+                      </td>
+                      <td>
+                        <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+                          {formatRelativeTime(doc.updatedAt)}
+                        </span>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <Dropdown
+                          trigger={
+                            <Button variant="ghost" size="sm" icon aria-label="Document options">
+                              <MoreHorizontal size={16} />
+                            </Button>
+                          }
+                        >
+                          <DropdownItem onClick={() => navigate(`/documents/${doc.id}`)}>
+                            <Eye size={14} /> View Details & Evaluation
+                          </DropdownItem>
+                          <DropdownItem onClick={() => handleDownload(doc)}>
+                            <Download size={14} /> Download File
+                          </DropdownItem>
+                          <DropdownItem onClick={() => openEmailModal(doc)}>
+                            <Send size={14} /> Send via Email
+                          </DropdownItem>
+                          <div className="dropdown-separator" />
+                          <DropdownItem className="text-error" onClick={() => handleDelete(doc)}>
+                            <Trash2 size={14} /> Delete Document
+                          </DropdownItem>
+                        </Dropdown>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
-            <Pagination
-              page={page}
-              pageSize={pageSize}
-              total={totalDocuments}
-              onPageChange={setPage}
-            />
+
+            {totalDocuments > pageSize && (
+              <div style={{ padding: 'var(--space-3) var(--space-4)', borderTop: '1px solid var(--border-secondary)' }}>
+                <Pagination page={page} pageSize={pageSize} total={totalDocuments} onPageChange={setPage} />
+              </div>
+            )}
           </>
         )}
       </Card>
 
       {/* ====================================================== */}
-      {/* 1. DOCUMENT UPLOAD MODAL */}
+      {/* 1. DOCUMENT INGESTION MODAL (Upload File vs Upload Folder) */}
       {/* ====================================================== */}
       {isUploadOpen && (
         <div style={{
@@ -440,20 +501,70 @@ export default function DocumentsPage() {
         }}>
           <div style={{
             backgroundColor: 'var(--bg-elevated, #ffffff)', borderRadius: 'var(--radius-lg, 8px)',
-            width: '100%', maxWidth: 520, border: '1px solid var(--border-primary, #e2e8f0)',
+            width: '100%', maxWidth: 540, border: '1px solid var(--border-primary, #e2e8f0)',
             boxShadow: 'var(--shadow-xl)', overflow: 'hidden'
           }}>
+            {/* Modal Header */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--border-secondary, #e2e8f0)'
             }}>
-              <h3 style={{ fontSize: 'var(--text-h4, 18px)', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Upload Document</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                {uploadMode === 'file' ? (
+                  <Upload size={20} style={{ color: 'var(--color-brand-600, #2563eb)' }} />
+                ) : (
+                  <FolderUp size={20} style={{ color: 'var(--color-brand-600, #2563eb)' }} />
+                )}
+                <div>
+                  <h3 style={{ fontSize: 'var(--text-h4, 18px)', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                    {uploadMode === 'file' ? 'Upload Single Document' : 'Upload Folder / Batch Ingestion'}
+                  </h3>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {uploadMode === 'file' ? 'Ingest and evaluate one document' : 'Batch process multiple documents through decision rules'}
+                  </div>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsUploadOpen(false)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
               >
                 <X size={18} />
+              </button>
+            </div>
+
+            {/* Mode Switcher Tabs */}
+            <div style={{
+              display: 'flex',
+              borderBottom: '1px solid var(--border-secondary, #e2e8f0)',
+              backgroundColor: 'var(--bg-secondary, #f8fafc)',
+              padding: '4px'
+            }}>
+              <button
+                type="button"
+                onClick={() => { setUploadMode('file'); setUploadFiles([]); }}
+                style={{
+                  flex: 1, padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: '4px',
+                  fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  backgroundColor: uploadMode === 'file' ? 'var(--bg-elevated, #ffffff)' : 'transparent',
+                  color: uploadMode === 'file' ? 'var(--color-brand-600, #2563eb)' : 'var(--text-secondary)',
+                  boxShadow: uploadMode === 'file' ? 'var(--shadow-sm)' : 'none'
+                }}
+              >
+                <Upload size={14} /> Upload File (Single)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setUploadMode('folder'); setUploadFiles([]); }}
+                style={{
+                  flex: 1, padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: '4px',
+                  fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  backgroundColor: uploadMode === 'folder' ? 'var(--bg-elevated, #ffffff)' : 'transparent',
+                  color: uploadMode === 'folder' ? 'var(--color-brand-600, #2563eb)' : 'var(--text-secondary)',
+                  boxShadow: uploadMode === 'folder' ? 'var(--shadow-sm)' : 'none'
+                }}
+              >
+                <FolderUp size={14} /> Upload Folder (Batch)
               </button>
             </div>
 
@@ -469,57 +580,70 @@ export default function DocumentsPage() {
                   </div>
                 )}
 
-                {/* File Dropzone */}
+                {/* File Dropzone / Selector */}
                 <div
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => uploadMode === 'file' ? singleFileInputRef.current?.click() : folderInputRef.current?.click()}
                   style={{
-                    border: '2px dashed var(--border-secondary, #cbd5e1)',
+                    border: '2px dashed var(--border-primary, #cbd5e1)',
                     borderRadius: 'var(--radius-md, 6px)',
                     padding: 'var(--space-5)',
                     textAlign: 'center',
                     cursor: 'pointer',
-                    backgroundColor: uploadFiles.length > 0 ? 'var(--color-brand-50, #f0fdf4)' : 'var(--bg-secondary, #f8fafc)',
-                    transition: 'border-color 0.2s'
+                    backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.tiff"
-                    onChange={handleFileSelect}
-                    style={{ display: 'none' }}
-                  />
                   {uploadFiles.length > 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
-                      <Paperclip size={20} style={{ color: 'var(--color-brand-600, #16a34a)' }} />
-                      <div style={{ textAlign: 'left' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)' }}>
-                          {uploadFiles.length === 1
-                            ? uploadFiles[0].name
-                            : `${uploadFiles.length} files selected for Batch Processing`}
+                    <div>
+                      {uploadFiles.length === 1 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--color-brand-700, #1d4ed8)' }}>
+                          <FileText size={20} />
+                          <span style={{ fontWeight: 600 }}>{uploadFiles[0].name}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>({formatFileSize(uploadFiles[0].size)})</span>
                         </div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-caption)' }}>
-                          {uploadFiles.length === 1
-                            ? `${formatFileSize(uploadFiles[0].size)} • Click to change`
-                            : `${formatFileSize(uploadFiles.reduce((a, f) => a + f.size, 0))} total • Click to change`}
+                      ) : (
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--color-brand-700, #1d4ed8)' }}>
+                            <FolderArchive size={20} />
+                            <span style={{ fontWeight: 600 }}>{uploadFiles.length} Documents Selected from Folder</span>
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: 4 }}>
+                            Total batch size: {formatFileSize(uploadFiles.reduce((acc, f) => acc + f.size, 0))}
+                          </div>
                         </div>
+                      )}
+                      <div style={{ fontSize: '11px', color: 'var(--color-brand-600)', marginTop: 6, textDecoration: 'underline' }}>
+                        Click to change {uploadMode === 'file' ? 'file' : 'folder'}
                       </div>
                     </div>
                   ) : (
                     <div>
-                      <Upload size={28} style={{ color: 'var(--color-brand-600, #2563eb)', margin: '0 auto var(--space-2)' }} />
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)' }}>
-                        Click to select or drag & drop single or batch documents
-                      </div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-caption)', marginTop: 4 }}>
-                        Supported formats: PDF, DOCX, TXT, PNG, JPG (Select multiple for batch ingestion)
-                      </div>
+                      {uploadMode === 'file' ? (
+                        <>
+                          <Upload size={28} style={{ color: 'var(--color-brand-600, #2563eb)', margin: '0 auto var(--space-2)' }} />
+                          <div style={{ fontWeight: 600, fontSize: 'var(--text-body-sm)', color: 'var(--text-primary)' }}>
+                            Click to select document file
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: 4 }}>
+                            Supports PDF, DOCX, PNG, JPG, TIFF, TXT, CSV (up to 50MB)
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <FolderUp size={28} style={{ color: 'var(--color-brand-600, #2563eb)', margin: '0 auto var(--space-2)' }} />
+                          <div style={{ fontWeight: 600, fontSize: 'var(--text-body-sm)', color: 'var(--text-primary)' }}>
+                            Click to select folder for batch document ingestion
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: 4 }}>
+                            All documents within the selected folder will be ingested in batch
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {uploadFiles.length <= 1 && (
+                {uploadMode === 'file' && (
                   <Input
                     label="Document Name (Optional)"
                     placeholder="e.g. Q3 Financial Statement"
@@ -544,7 +668,7 @@ export default function DocumentsPage() {
                   />
 
                   <SelectField
-                    label="Priority"
+                    label="Sorting Priority"
                     value={uploadPriority}
                     onChange={(e) => setUploadPriority(e.target.value as Priority)}
                     options={[

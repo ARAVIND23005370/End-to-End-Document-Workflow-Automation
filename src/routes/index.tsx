@@ -1,4 +1,4 @@
-// ===========================
+﻿// ===========================
 // E2EDocs — Route Configuration
 // ===========================
 
@@ -19,8 +19,6 @@ const DocumentDetailPage = lazy(() => import('../pages/documents/DocumentDetailP
 const DecisionRulesPage = lazy(() => import('../pages/rules/DecisionRulesPage'));
 const FolderClassificationPage = lazy(() => import('../pages/rules/FolderClassificationPage'));
 const FolderSortingPage = lazy(() => import('../pages/rules/FolderSortingPage'));
-const RoutingPage = lazy(() => import('../pages/rules/RoutingPage'));
-const CommunicationPage = lazy(() => import('../pages/rules/CommunicationPage'));
 const RulesPage = lazy(() => import('../pages/rules/RulesPage'));
 const RuleBuilderPage = lazy(() => import('../pages/rules/RuleBuilderPage'));
 const WorkflowsPage = lazy(() => import('../pages/workflows/WorkflowsPage'));
@@ -60,7 +58,7 @@ export const router = createBrowserRouter([
     element: <SuspenseWrapper><ResetPasswordPage /></SuspenseWrapper>,
   },
 
-  // Application (requires auth — enforcement deferred to backend integration)
+  // Application
   {
     path: '/',
     element: <AppLayout />,
@@ -71,8 +69,9 @@ export const router = createBrowserRouter([
       { path: 'decision-rules', element: <SuspenseWrapper><DecisionRulesPage /></SuspenseWrapper> },
       { path: 'folder-classification', element: <SuspenseWrapper><FolderClassificationPage /></SuspenseWrapper> },
       { path: 'folder-sorting', element: <SuspenseWrapper><FolderSortingPage /></SuspenseWrapper> },
-      { path: 'routing', element: <SuspenseWrapper><RoutingPage /></SuspenseWrapper> },
-      { path: 'communication', element: <SuspenseWrapper><CommunicationPage /></SuspenseWrapper> },
+      // Routing & Communication redirect cleanly to Decision Automation (where they belong as actions)
+      { path: 'routing', element: <Navigate to="/decision-rules" replace /> },
+      { path: 'communication', element: <Navigate to="/decision-rules" replace /> },
       { path: 'rules', element: <SuspenseWrapper><RulesPage /></SuspenseWrapper> },
       { path: 'rules/new', element: <SuspenseWrapper><RuleBuilderPage /></SuspenseWrapper> },
       { path: 'rules/:id', element: <SuspenseWrapper><RuleBuilderPage /></SuspenseWrapper> },

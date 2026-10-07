@@ -272,7 +272,7 @@ export interface PaginationState {
 }
 
 export interface FilterState {
-  search: string;
+  search?: string;
   status?: string;
   priority?: string;
   source?: string;

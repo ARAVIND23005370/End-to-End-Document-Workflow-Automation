@@ -225,6 +225,20 @@ public class AuthService {
         return new MessageResponse("Password changed successfully");
     }
 
+    /**
+     * DEV ONLY: Forcefully reset any user's password by email.
+     * Remove this method after use.
+     */
+    @Transactional
+    public MessageResponse devResetPassword(String email, String newPassword) {
+        User user = userRepository.findByEmailIgnoreCase(email.trim().toLowerCase())
+                .orElseThrow(() -> new ResourceNotFoundException("No user found with email: " + email));
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        logger.warn("[DEV] Password forcefully reset for user: {} ({})", user.getName(), user.getEmail());
+        return new MessageResponse("[DEV] Password reset for " + user.getEmail() + ". Login with your new password and remove this endpoint.");
+    }
+
     public static String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
